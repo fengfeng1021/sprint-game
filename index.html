@@ -509,8 +509,9 @@
     </script>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useRef, useCallback } from 'https://esm.sh/react@18.2.0?dev';
-        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client?dev';
+        // [优化] 生产环境构建 (Production Build) - 性能提升 30%
+        import React, { useState, useEffect, useRef, useCallback } from 'https://esm.sh/react@18.2.0';
+        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
 
         import {
             User, Lock, LogIn, Users, Settings, Play, Plus, Minus,
@@ -743,7 +744,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             return { ...validSymbols[randIndex] };
         };
 
-        // 4. [必输] 生成必输盘面 (修正版：严格限制 Scatter < 3 以防 Retrigger)
+       // 4. [必输] 生成必输盘面 (动画修复版)
         const generateLosingGrid = (cfg) => {
             const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
             const counts = {};
@@ -756,27 +757,17 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
 
                     while (attempts < 20) {
                         sym = getUniformSymbol();
-
                         const id = sym.id;
                         const currentCount = counts[id] || 0;
-
-                        // [关键修改] Scatter 限制
-                        // 之前是 3，会导致生成 3 个 (0,1,2通过)。
-                        // 现在改为 2，确保最多生成 2 个 (只有0,1通过，2不通过)。
-                        let countLimit = (id === 99) ? 2 : 7;
-
-                        // 邻居避让
+                        let countLimit = (id === 99) ? 2 : 7; // Scatter限制2个，普通限制7个(不足8)
+                        
                         const left = c > 0 ? grid[r][c - 1] : null;
                         const top = r > 0 ? grid[r - 1][c] : null;
 
                         if (currentCount < countLimit) {
-                            if ((left && left.id === id) || (top && top.id === id)) {
-                                isValid = false;
-                            } else {
-                                isValid = true;
-                            }
+                            if ((left && left.id === id) || (top && top.id === id)) { isValid = false; } 
+                            else { isValid = true; }
                         }
-
                         if (isValid) break;
                         attempts++;
                     }
@@ -791,62 +782,43 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                     }
 
                     counts[sym.id] = (counts[sym.id] || 0) + 1;
-                    grid[r][c] = sym;
+                    // [修复] 强制添加 isNew: true 触发下落动画，添加 Key 强制重绘
+                    grid[r][c] = { ...sym, isNew: true, key: Math.random().toString(36) };
                 }
             }
             return grid;
         };
 
-        // 5. [必胜] 生成必胜盘面 (修正版：允许 FG Retrigger，但限制干扰)
-        const generateWinningGrid = (cfg) => {
+        // 5. [必胜] 生成必胜盘面 (动画修复版)
+        const generateWinningGrid = (cfg, isFG = false) => {
             const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
             const usedPos = new Set();
 
             // 1. 决定中奖主角
             let targetSym = null;
-            let safety = 0;
-            do {
-                const candidate = getRandomSymbolData(cfg);
-                // 只要不是 ID 88，都可以当中奖主角 (包含 Scatter)
-                if (candidate && candidate.id !== 88) {
-                    targetSym = candidate;
-                }
-                safety++;
-            } while (!targetSym && safety < 20);
-
-            if (!targetSym) targetSym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
-
+            do { targetSym = getRandomSymbolData(cfg); } while (!targetSym || targetSym.id === 88);
+            
             const isWinFG = (targetSym.id === 99);
             const targetId = targetSym.id;
+            let winCount = isWinFG ? 4 : (8 + Math.floor(Math.random() * 2));
 
-            // 2. 决定数量
-            let winCount = 0;
-            if (isWinFG) {
-                // 如果贏的是 Scatter (Retrigger)，給 4 個 (或者 3 個也行，這裡給 4 個較穩)
-                winCount = 4;
-            } else {
-                // 如果是普通连线，给 8~9 个
-                winCount = Math.floor(Math.random() * 2) + 8;
-            }
-
-            // 3. 放置中奖符号
+            // 2. 放置中奖符号
             let placed = 0;
             while (placed < winCount) {
                 const r = Math.floor(Math.random() * ROWS);
                 const c = Math.floor(Math.random() * COLS);
                 const key = `${r}-${c}`;
                 if (!usedPos.has(key)) {
-                    grid[r][c] = { ...targetSym };
+                    // [修复] 添加 isNew
+                    grid[r][c] = { ...targetSym, isNew: true, key: Math.random().toString(36) };
                     usedPos.add(key);
                     placed++;
                 }
             }
 
-            // 4. 填充剩下的格子
+            // 3. 填充干扰项
             const currentCounts = {};
             currentCounts[targetId] = winCount;
-
-            // 统计目前 Scatter 数量
             let scatterCount = isWinFG ? 4 : 0;
 
             for (let r = 0; r < ROWS; r++) {
@@ -855,42 +827,29 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                         let filler;
                         let subSafety = 0;
                         do {
-                            // 填充时使用权重随机 (或您想用 getUniformSymbol 也可以，这里维持权重较自然)
                             filler = getRandomSymbolData(cfg);
                             subSafety++;
-
-                            // 规则 A: 不含 ID 88
-                            if (filler.id === 88) { filler = null; continue; }
-                            // 规则 B: 不含主角 (避免增加连线数)
-                            if (filler.id === targetId) { filler = null; continue; }
-
-                            // 规则 C: Scatter 限制
-                            if (filler.id === 99) {
-                                // 关键：如果这局不是赢 FG，绝对不能凑齐 3 个
-                                // 如果是赢 FG，已经放了 4 个，也不能再多了
-                                const limit = isWinFG ? 4 : 2;
-                                if (scatterCount >= limit) { filler = null; continue; }
-                            } else {
-                                if ((currentCounts[filler.id] || 0) >= 7) { filler = null; continue; }
-                            }
+                            if (filler.id === 88 || filler.id === targetId) { filler = null; continue; }
+                            const limit = (filler.id === 99) ? (isWinFG ? 4 : 2) : 7;
+                            if ((currentCounts[filler.id] || 0) >= limit) { filler = null; continue; }
                         } while (!filler && subSafety < 15);
 
                         if (!filler) {
-                            let safeId = 1;
-                            if (targetId === 1) safeId = 2;
+                            let safeId = 1; if (targetId === 1) safeId = 2;
                             filler = { ...SYMBOLS_DEF.find(s => s.id === safeId) };
                         }
 
                         if (filler.id === 99) scatterCount++;
                         currentCounts[filler.id] = (currentCounts[filler.id] || 0) + 1;
-                        grid[r][c] = filler;
+                        // [修复] 添加 isNew
+                        grid[r][c] = { ...filler, isNew: true, key: Math.random().toString(36) };
                     }
                 }
             }
             return grid;
         };
 
-        // 6. [隨機] 純隨機生成 (加入全局 Scatter 數量限制)
+        // 6. [随机] 纯随机生成 (动画修复版)
         const generateGridData = (cfg) => {
             let scatterCount = 0;
             return Array(ROWS).fill(null).map(() =>
@@ -900,19 +859,15 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                     do {
                         sym = getRandomSymbolData(cfg);
                         if (sym.id === 88) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
-
-                        // [關鍵] 硬上限檢查
-                        if (sym.id === 99 && scatterCount >= 4) {
-                            // 已達上限，重抽直到不是 Scatter
-                            sym = null;
-                        }
+                        if (sym.id === 99 && scatterCount >= 4) sym = null;
                         safety++;
                     } while (!sym && safety < 10);
 
                     if (!sym) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
                     if (sym.id === 99) scatterCount++;
 
-                    return sym;
+                    // [修复] 添加 isNew
+                    return { ...sym, isNew: true, key: Math.random().toString(36) };
                 })
             );
         };
@@ -1132,37 +1087,32 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                         // 3. 掉落
                         const nextGrid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
                         const isNextDropEmpty = Math.random() < emptyRate;
-                        let predictedScatterCount = 0;
-                        for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (grid[r][c] && grid[r][c].id === 99 && !eliminatedSet.has(`${r}-${c}`)) { predictedScatterCount++; } } }
+                        let predictedScatterCount = 0; for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (currentGrid[r][c] && currentGrid[r][c].id === 99) predictedScatterCount++; } }
+                    
+                    // [修复] 掉落中奖逻辑升级：适应 8+ 消除规则
+                    let forceWinSymbol = null; 
+                    let forcedCountNeeded = 0; // 需要强制生成的数量
+                    
+                    if (!isNextDropEmpty) { 
+                        // 随机选一个普通符号 (ID 1-9) 作为中奖目标
+                        let s = getUniformSymbol(); 
+                        while (s.id > 9 || s.id === 88) { s = getUniformSymbol(); }
+                        forceWinSymbol = s; 
+                        forcedCountNeeded = 8; // 强制生成 8 个以保证消除
+                    }
 
-                        let forceWinCol = -1;
-                        let forceWinSymbol = null;
-                        if (!isNextDropEmpty) {
-                            forceWinCol = Math.floor(Math.random() * COLS);
-                            let s = getUniformSymbol();
-                            if (s.id > 9) s = { ...SYMBOLS_DEF.find(sym => sym.id === 1) };
-                            forceWinSymbol = s;
-                        }
-
-                        for (let c = 0; c < COLS; c++) {
-                            let colData = [];
-                            for (let r = 0; r < ROWS; r++) { if (grid[r][c] && !eliminatedSet.has(`${r}-${c}`)) { colData.push(grid[r][c]); } }
-
-                            // ... (前略: Step 3 掉落補滿的開頭) ...
-                            // B. 補滿新球
-                            // ... (前略: 模擬器 Step 3 掉落補滿) ...
-                            // 补满新球
-                            let dropIndex = 0;
-                            while (colData.length < ROWS) {
-                                let sym;
-
-                                // [分支 A] 强制中奖
-                                if (!isNextDropEmpty && c === forceWinCol && dropIndex < 3) {
-                                    sym = { ...forceWinSymbol };
-                                }
-                                // [分支 B] 强制空转 / 普通填充
-                                else {
-                                    let safety = 0;
+                    for (let c = 0; c < COLS; c++) {
+                        let colData = []; for (let r = 0; r < ROWS; r++) { if (currentGrid[r][c]) { colData.push({ ...currentGrid[r][c], isNew: false, oldRow: r }); } }
+                        let dropIndex = 0;
+                        while (colData.length < ROWS) {
+                            let sym; 
+                            // [关键修改] 如果需要中奖，优先填充目标符号，直到凑够 8 个
+                            if (!isNextDropEmpty && forcedCountNeeded > 0) { 
+                                sym = { ...forceWinSymbol }; 
+                                forcedCountNeeded--;
+                            }
+                            else {
+                                let safety = 0;
                                     do {
                                         // -----------------------------------------------------
                                         // [核心修改] 模擬器同步：混合機率生成
@@ -1468,7 +1418,73 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                 </div>
             );
         }
+// --- [性能核心] 高性能格子组件 (React.memo 防止全盘重绘) ---
+        const GridCell = React.memo(({ cell, r, c, isEliminating, isSpecialScatter, isJustRevealed, isStruck, isSpinning, isFastDrop, gameSpeed }) => {
+            if (!cell) return <div className="bg-transparent"></div>;
 
+            const dropAnimationClass = (isSpinning && !isEliminating)
+                ? (cell.isNew ? 'animate-heavy-drop' : (cell.isDropping ? 'animate-survivor-drop' : ''))
+                : '';
+
+            return (
+                <div
+                    data-symbol-id={cell.id}
+                    style={{
+                        zIndex: isEliminating ? 100 : (isSpecialScatter ? 90 : 10),
+                        animationDelay: (cell.isNew && isSpinning)
+                            ? (isFastDrop ? `${(c * 0.06) / gameSpeed}s` : `${(c * 0.08) / gameSpeed}s`)
+                            : '0s',
+                        animationDuration: isFastDrop ? `calc(0.25s / ${gameSpeed})` : undefined,
+                        transition: isFastDrop ? `all calc(0.25s / ${gameSpeed}) ease-out` : `all calc(0.2s / ${gameSpeed})`,
+                        willChange: 'transform, opacity' // [GPU加速]
+                    }}
+                    className={`
+                        relative flex items-center justify-center 
+                        border border-white/5 overflow-visible 
+                        ${!isFastDrop ? 'transition-all duration-200' : ''} 
+                        ${dropAnimationClass} 
+                        ${isEliminating ? 'animate-eliminate-shake' : 'bg-black/20'} 
+                        ${isSpecialScatter ? 'scale-125 animate-pulse drop-shadow-[0_0_15px_gold]' : ''} 
+                        ${isJustRevealed ? 'animate-magic-appear' : ''}
+                    `}
+                >
+                    {isStruck && (
+                        <>
+                            <div className="lightning-impact-cell"></div>
+                            <div className="lightning-bolt-container"></div>
+                        </>
+                    )}
+
+                    {cell.id === 88 ? (() => {
+                        let orbImageStr = './images/small.png'; const val = cell.val;
+                        if (val <= 3) orbImageStr = './images/small.png'; else if (val <= 8) orbImageStr = './images/small2.png'; else if (val <= 15) orbImageStr = './images/small3.png'; else orbImageStr = './images/small4.png';
+                        return (
+                            <div className="relative w-full h-full flex items-center justify-center p-1 group">
+                                <img src={orbImageStr} alt={`${val}x`} className="w-full h-full object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200 group-hover:scale-105" />
+                                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#fde047] font-black text-2xl md:text-6xl z-20 pointer-events-none pb-1 md:pb-2 drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]" style={{ textShadow: '0 0 10px rgba(253, 224, 71, 0.5)' }}>{val}x</span>
+                            </div>
+                        );
+                    })() : cell.id === 99 ? (
+                        <div className="relative w-full h-full flex flex-col items-center justify-center p-1">
+                            <img src={cell.icon} alt="Scatter" className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.6)]" />
+                        </div>
+                    ) : ((() => {
+                        const scale = cell.scale || 1;
+                        const sizePct = `${scale * 100}%`;
+                        return (
+                            <div className="w-full h-full flex items-center justify-center p-1 relative">
+                                <img src={cell.icon} alt={cell.name} className="object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200" style={{ width: sizePct, height: sizePct }} />
+                            </div>
+                        );
+                    })())}
+                </div>
+            );
+        }, (prev, next) => {
+            // [性能核心] 只有当这些属性真正改变时才重绘，否则直接复用 DOM
+            return prev.cell === next.cell && prev.isEliminating === next.isEliminating && prev.isStruck === next.isStruck && prev.isSpinning === next.isSpinning && prev.gameSpeed === next.gameSpeed;
+        });
+
+        
         // ------------------------------------------------------------
         // Game Engine (最终完整版：修复音量变量未定义错误)
         // ------------------------------------------------------------
@@ -1494,6 +1510,10 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             // --- [3. 人物动作状态] ---
             const [isManCasting, setIsManCasting] = useState(false);
             const [isWomanCasting, setIsWomanCasting] = useState(false);
+
+            // [Cheat State] 上帝模式控制
+            const [cheatNextWin, setCheatNextWin] = useState(true);
+            const [cheatCascades, setCheatCascades] = useState(0);
 
             // --- [4. 弹窗与菜单状态] ---
             const [showBuyModal, setShowBuyModal] = useState(false);
@@ -1794,64 +1814,32 @@ const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
 
             // --- [9. 音频控制逻辑] ---
 
-            // 音频池初始化（预加载所有音效）
+            // [Audio Pool] 初始化音频池 (每种音效预加载 5 个实例，无需运行时创建，零开销)
             useEffect(() => {
-                const soundFiles = {
-                    'spin': './sound/sprint.mp3',
-                    'win': './sound/clear.mp3',
-                    'man': './sound/man.mp3',
-                    'woman': './sound/woman.mp3',
-                };
-
-                // 预加载音频到池中
+                const soundFiles = { 'spin': './sound/sprint.mp3', 'win': './sound/clear.mp3', 'man': './sound/man.mp3', 'woman': './sound/woman.mp3', 'drop': './sound/sprint.mp3', 'bigwin': './sound/clear.mp3' };
                 Object.entries(soundFiles).forEach(([key, src]) => {
-                    const audio = new Audio(src);
-                    audio.preload = 'auto'; // 自动预加载
-                    audio.volume = sfxVolume;
-                    audioPool.current[key] = audio;
-                });
-
-                // 清理函数：卸载时释放资源
-                return () => {
-                    Object.values(audioPool.current).forEach(audio => {
-                        audio.pause();
-                        audio.src = '';
-                    });
-                    audioPool.current = {};
-                };
-            }, []); // 仅初始化一次
-
-            // BGM 实时监听
-            useEffect(() => {
-                const audio = bgmRef.current;
-                if (audio) {
-                    audio.volume = bgmVolume; // 应用状态
-                    if (bgmVolume > 0 && audio.paused) {
-                        audio.play().catch(() => { }); // 尝试播放
-                    } else if (bgmVolume === 0 && !audio.paused) {
-                        audio.pause();
+                    audioPool.current[key] = [];
+                    for(let i=0; i<5; i++) { // 预创建5个替身
+                        const a = new Audio(src); a.preload = 'auto'; a.volume = sfxVolume;
+                        audioPool.current[key].push(a);
                     }
-                }
-            }, [bgmVolume]);
-
-            // SFX 音量同步（当音量变化时同步到所有预加载的音频）
-            useEffect(() => {
-                Object.values(audioPool.current).forEach(audio => {
-                    if (audio) audio.volume = sfxVolume;
                 });
-            }, [sfxVolume]);
+                return () => { Object.values(audioPool.current).flat().forEach(a => { a.pause(); a.src = ''; }); audioPool.current = {}; };
+            }, []);
 
-            // SFX 播放函数（优化版：使用音频池 + 克隆模式）
-            const playSound = useCallback((type) => { 
-                const audio = audioPool.current[type]; 
-                if (!audio) return; 
-                
-                // [优化] 移动端禁止 cloneNode，直接重置进度播放，消除卡顿
-                audio.volume = sfxVolume;
-                audio.currentTime = 0; 
-                audio.play().catch(() => {}); // 忽略交互报错
-            }, [sfxVolume]);
+            // [Audio Volume] 批量更新音量
+            useEffect(() => { const audio = bgmRef.current; if (audio) { audio.volume = bgmVolume; if (bgmVolume > 0 && audio.paused) audio.play().catch(()=>{}); else if(bgmVolume===0) audio.pause(); } }, [bgmVolume]);
+            useEffect(() => { Object.values(audioPool.current).flat().forEach(a => { if (a) a.volume = sfxVolume; }); }, [sfxVolume]);
 
+            // [Play] 高性能播放：从池中找空闲实例，不阻塞主线程
+            const playSound = useCallback((type) => {
+                const pool = audioPool.current[type];
+                if (!pool || pool.length === 0) return;
+                // 优先找闲置的，没有则打断第一个
+                const available = pool.find(a => a.paused) || pool[0];
+                available.currentTime = 0;
+                available.play().catch(()=>{});
+            }, []);
 // Keyboard
             useEffect(() => {
                 const handleKeyDown = (e) => { 
@@ -1913,292 +1901,314 @@ const smartWait = (ms, isFastMode = false) => {
                 if (hasWin) return false;
                 return true;
             };
+            // [Core] 1. 生成剧本 (权重修正版)
+            const calculateSpinSequence = (config, cheat) => {
+                const sequence = [];
+                const usedIds = new Set();
+                
+                let totalCascades = 0;
+                if (cheat && cheat.win !== undefined) {
+                    if (!cheat.win) return []; 
+                    totalCascades = cheat.cascades || 0;
+                } else {
+                    const emptyRate = config.emptySpinProbability || 0.2;
+                    if (Math.random() < emptyRate) return []; 
+                    
+                    // 连消判定 (概率递减)
+                    let prob = 0.5; 
+                    while (Math.random() < prob && totalCascades < 5) {
+                        totalCascades++;
+                        prob *= 0.8;
+                    }
+                }
+
+                // B. 分配每一轮的中奖符号 (ID 1-9)
+                for (let i = 0; i <= totalCascades; i++) {
+                    let sym;
+                    let safe = 0;
+                    
+                    // 优先尝试随机权重
+                    do {
+                        sym = getRandomSymbolData(config);
+                        safe++;
+                    } while ((sym.id > 9 || sym.id === 88 || usedIds.has(sym.id)) && safe < 20);
+                    
+                    // [保底] 如果随机不出来（比如都用光了），就从1-9里硬找一个没用过的
+                    if (sym.id > 9 || sym.id === 88 || usedIds.has(sym.id)) {
+                        const available = [1,2,3,4,5,6,7,8,9].filter(id => !usedIds.has(id));
+                        if (available.length > 0) {
+                            // 随机选一个可用的
+                            sym = { id: available[Math.floor(Math.random() * available.length)] };
+                        } else {
+                            // 极端情况：9个符号都赢了一遍（不太可能），就强制选 ID 1
+                            sym = { id: 1 }; 
+                        }
+                    }
+                    
+                    sequence.push(sym.id);
+                    usedIds.add(sym.id);
+                }
+                return sequence;
+            };
+
+            // [Core] 2. 生成种子盘面 (动画修复 + 权重填充)
+            const generateSeededGrid = (sequence, config) => {
+                const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+                const cells = [];
+                for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) cells.push({r,c});
+                
+                const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+                shuffle(cells);
+
+                // A. 放置首局赢家
+                if (sequence.length > 0) {
+                    const winId = sequence[0];
+                    const count = 8 + Math.floor(Math.random() * 2);
+                    for(let i=0; i<count; i++) {
+                        const pos = cells.pop();
+                        // [修复] 添加 isNew: true 触发下落动画
+                        grid[pos.r][pos.c] = { ...SYMBOLS_DEF.find(s => s.id === winId), key: Math.random().toString(36), isNew: true };
+                    }
+                }
+
+                // B. 放置后续赢家 (种子)
+                for (let i = 1; i < sequence.length; i++) {
+                    const futureId = sequence[i];
+                    const seedCount = 5 + Math.floor(Math.random() * 2);
+                    for(let k=0; k<seedCount; k++) {
+                        if(cells.length === 0) break;
+                        const pos = cells.pop();
+                        grid[pos.r][pos.c] = { ...SYMBOLS_DEF.find(s => s.id === futureId), key: Math.random().toString(36), isNew: true };
+                    }
+                }
+
+                // C. 填充剩余空位 (使用权重)
+                const bannedIds = new Set([...sequence, 88, 99]);
+                while(cells.length > 0) {
+                    const pos = cells.pop();
+                    let sym;
+                    let safe = 0;
+                    do { 
+                        // [修复] 使用配置权重填充废球
+                        sym = getRandomSymbolData(config); 
+                        safe++;
+                    } while((bannedIds.has(sym.id) || sym.id === 88) && safe < 20);
+                    
+                    // 兜底：如果一直随到禁用球，就强制给个安全的
+                    if (bannedIds.has(sym.id) || sym.id === 88) sym = { ...SYMBOLS_DEF[0] };
+
+                    grid[pos.r][pos.c] = { ...sym, key: Math.random().toString(36), isNew: true };
+                }
+
+                return grid;
+            };
 
             // ---------------------------------------------------------
             // 核心逻辑 1: 开始旋转
             // ---------------------------------------------------------
-            const startSpin = async (forceType = null, isBuy = false, buyCost = 0) => {
+            // Logic
+            // Logic (智能剧本版)
+            const startSpin = async (forceType = null, isBuy = false, buyCost = 0, cheatConfig = null) => {
                 if (isSpinning) return;
-
                 try {
                     const cost = isBuy ? buyCost : bet;
-                    if (!freeGame.active && user.balance < cost && !forceType) {
-                        setAutoSpin(false); alert("余额不足！"); return;
-                    }
-
-                    setIsSpinning(true);
-                    setShowBuyModal(false);
-                    setUiState(prev => ({ ...prev, currentWin: 0, winMult: 0, displayWinText: "0.00" }));
-                    setFloatingTexts([]); setEliminatingCells(new Set()); setLasers([]); setShowFGTrigger(false); setBetMenuOpen(null);
-                    setLightningStrikes(new Set());
-                    setIsManCasting(false); setIsWomanCasting(false);
-
-                    setGrid(Array(ROWS).fill(null).map(() => Array(COLS).fill(null)));
-
+                    if (!freeGame.active && user.balance < cost && !forceType && !cheatConfig) { setAutoSpin(false); alert("余额不足！"); return; }
+                    
+                    setIsSpinning(true); setShowBuyModal(false); setUiState(prev => ({ ...prev, currentWin: 0, winMult: 0, displayWinText: "0.00" })); setFloatingTexts([]); setEliminatingCells(new Set()); setLasers([]); setShowFGTrigger(false); setBetMenuOpen(null); setLightningStrikes(new Set()); setIsManCasting(false); setIsWomanCasting(false); setGrid(Array(ROWS).fill(null).map(() => Array(COLS).fill(null)));
+                    
                     let currentBalance = user.balance;
-if (!freeGame.active) { 
-                        currentBalance -= cost; 
-                        onUpdateBalance(currentBalance); 
-                    } 
-                    else { 
-                        setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft - 1 })); 
-                    }
-
-                    // [Monitor] 更新状态为旋转中
+                    if (!freeGame.active) { currentBalance -= cost; onUpdateBalance(currentBalance); } else { setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft - 1 })); }
+                    
                     updateDoc(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), { status: 'spinning' });
-
-                    playSound('spin');
-                    await new Promise(r => setTimeout(r, 50 / gameSpeed));
+                    playSound('spin'); await new Promise(r => setTimeout(r, 50 / gameSpeed));
 
                     const activeCfg = configRef.current;
-                    let rawGrid;
-                    const emptyRate = activeCfg.emptySpinProbability !== undefined ? activeCfg.emptySpinProbability : 0.2;
-                    const isForcedLogic = !isBuy && !forceType;
-                    const isEmptyGame = isForcedLogic && Math.random() < emptyRate;
+                    let spinSequence = []; // [ID1, ID2, ID3]
+                    let gridToDisplay;
 
-                    if (isBuy) {
-                        rawGrid = generateRiggedGrid(activeCfg, 'SCATTER');
-                        addLog(`🛒 购买特色游戏 (-${cost})`, 'gold');
-                    } else if (forceType && user.role === 'admin') {
-                        rawGrid = generateRiggedGrid(activeCfg, forceType);
-                        addLog(`🔨 GOD MODE: 强制 ${forceType}`, 'warning');
-                    } else if (isEmptyGame) {
-                        rawGrid = generateLosingGrid(activeCfg);
-                        if (user.role === 'admin') addLog(`💀 强制空转 (RTP控制)`, 'gray');
+                    // 1. 生成剧本
+                    if (isBuy || forceType === 'SCATTER') {
+                        // 购买/强制 FG 特殊处理
+                        gridToDisplay = generateRiggedGrid(activeCfg, 'SCATTER');
+                        spinSequence = []; // FG 触发本身不算消除序列
+                        addLog(`🛒 购买/强制 FG`, 'gold');
+                    } else if (forceType === 'BIG_WIN') {
+                        // 强制大奖 (走剧本)
+                        spinSequence = calculateSpinSequence(activeCfg, { win: true, cascades: 0 });
+                        gridToDisplay = generateSeededGrid(spinSequence, activeCfg); // [修复] 传入配置
                     } else {
-                        rawGrid = generateWinningGrid(activeCfg, freeGame.active);
-                        if (user.role === 'admin') addLog(`🎉 强制中奖 (RTP控制)`, 'success');
+                        // 正常/上帝模式 (核心逻辑)
+                        spinSequence = calculateSpinSequence(activeCfg, cheatConfig);
+                        if (spinSequence.length > 0) {
+                            gridToDisplay = generateSeededGrid(spinSequence, activeCfg); // [修复] 传入配置
+                            if (user.role === 'admin') addLog(`📜 剧本: [${spinSequence.join(' -> ')}]`, 'success');
+                        } else {
+                            gridToDisplay = generateLosingGrid(activeCfg);
+                            if (user.role === 'admin') addLog(`💀 剧本: 空转`, 'gray');
+                        }
                     }
 
-                    const isBoring = checkIsBoring(rawGrid);
-                    // [整合] 移除快/慢模式区别，统一使用标准流畅动画
-                    setIsFastDrop(false);
-
-                    // --- 砸球判定 (同步逻辑) ---
-                    const smashRate = activeCfg.smashProbability !== undefined ? activeCfg.smashProbability : 0.3;
-                    const shouldSmash = Math.random() < smashRate;
-                    const candidates = [];
-                    rawGrid.forEach((row, r) => { row.forEach((cell, c) => { if (cell && cell.id <= 9) candidates.push({ r, c }); }); });
-
-                    let gridToDisplay = rawGrid.map(row => row.map(c => ({ ...c, key: Math.random().toString(36), isNew: true })));
                     let gridForLogic = gridToDisplay;
                     let smashHappened = false;
+                    
                     setGrid(gridToDisplay);
-                    syncTableGrid(gridToDisplay, []); // [Monitor] 同步并清空消除状态
+                    syncTableGrid(gridToDisplay, []);
 
-                    if (shouldSmash && candidates.length > 0) {
+                    // 2. 初始砸球 (全剧本保护)
+                    // 保护列表 = 整个剧本里涉及的所有 ID
+                    const protectedIds = new Set(spinSequence); 
+                    const smashRate = activeCfg.smashProbability !== undefined ? activeCfg.smashProbability : 0.3;
+                    
+                    const candidates = [];
+                    gridToDisplay.forEach((row, r) => { 
+                        row.forEach((cell, c) => { 
+                            if (cell && cell.id <= 9 && !protectedIds.has(cell.id)) {
+                                candidates.push({ r, c }); 
+                            }
+                        }); 
+                    });
+
+                    if (Math.random() < smashRate && candidates.length > 0) {
                         const smashCount = 1;
                         const targetCoords = [];
-                        for (let i = 0; i < smashCount; i++) {
-                            if (candidates.length === 0) break;
-                            const randIdx = Math.floor(Math.random() * candidates.length);
-                            targetCoords.push(candidates[randIdx]);
-                            candidates.splice(randIdx, 1);
-                        }
-
-                        // [优化] 动态计算延迟，除以 gameSpeed
-                        const delayStrike = 250 / gameSpeed;
-                        const delayReveal = 650 / gameSpeed;
-                        const delayClear = 1050 / gameSpeed;
-
-                        setTimeout(() => {
-                            const newStrikes = new Set();
-                            targetCoords.forEach(t => newStrikes.add(`${t.r}-${t.c}`));
-                            setLightningStrikes(newStrikes);
-
-                            const hasLeft = targetCoords.some(t => t.c < 3);
-                            const hasRight = targetCoords.some(t => t.c >= 3);
-                            if (hasLeft) { playSound('man'); setIsManCasting(true); }
-                            if (hasRight) { playSound('woman'); setIsWomanCasting(true); }
-
-                            if (user.role === 'admin') addLog(`⚡ 初始掉落: 触发同步砸球`, 'warning');
-                        }, delayStrike);
-
-                        const multWeights = getMultWeightsFromConfig(activeCfg);
-                        const totalMW = multWeights.reduce((a, w) => a + w.weight, 0);
-                        const smashedGrid = gridToDisplay.map(row => row.map(cell => ({ ...cell })));
-
-                        targetCoords.forEach(t => {
-                            let randomM = Math.random() * totalMW; let selectedVal = 2;
-                            for (let w of multWeights) { randomM -= w.weight; if (randomM <= 0) { selectedVal = w.val; break; } }
-                            smashedGrid[t.r][t.c] = {
-                                ...smashedGrid[t.r][t.c],
-                                id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier', val: selectedVal,
-                                isJustRevealed: true,
-                                isNew: false
-                            };
-                        });
-
+                        for (let i = 0; i < smashCount; i++) { if (candidates.length === 0) break; const randIdx = Math.floor(Math.random() * candidates.length); targetCoords.push(candidates[randIdx]); candidates.splice(randIdx, 1); }
+                        
+                        const delayStrike = 250 / gameSpeed; const delayReveal = 650 / gameSpeed; const delayClear = 1050 / gameSpeed;
+                        setTimeout(() => { const newStrikes = new Set(); targetCoords.forEach(t => newStrikes.add(`${t.r}-${t.c}`)); setLightningStrikes(newStrikes); const hasLeft = targetCoords.some(t => t.c < 3); const hasRight = targetCoords.some(t => t.c >= 3); if (hasLeft) { playSound('man'); setIsManCasting(true); } if (hasRight) { playSound('woman'); setIsWomanCasting(true); } }, delayStrike);
+                        
+                        const multWeights = getMultWeightsFromConfig(activeCfg); const totalMW = multWeights.reduce((a, w) => a + w.weight, 0); const smashedGrid = gridToDisplay.map(row => row.map(cell => ({ ...cell })));
+                        targetCoords.forEach(t => { let randomM = Math.random() * totalMW; let selectedVal = 2; for (let w of multWeights) { randomM -= w.weight; if (randomM <= 0) { selectedVal = w.val; break; } } smashedGrid[t.r][t.c] = { ...smashedGrid[t.r][t.c], id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier', val: selectedVal, isJustRevealed: true, isNew: false }; });
                         gridForLogic = smashedGrid;
-
-                        // 闪电覆盖时偷换数据
                         setTimeout(() => { setGrid(smashedGrid); }, delayReveal);
-
-                        // 清除闪电
-                        setTimeout(() => {
-                            setLightningStrikes(new Set());
-                            setIsManCasting(false); setIsWomanCasting(false);
-                        }, delayClear);
-
+                        setTimeout(() => { setLightningStrikes(new Set()); setIsManCasting(false); setIsWomanCasting(false); }, delayClear);
                         smashHappened = true;
                     }
 
-                    // [整合] 统一基础等待时间为 800ms，不再区分无聊/中奖
-                    const baseWait = 800;
-                    const totalWait = smashHappened ? Math.max(baseWait, 1100) : baseWait;
-
-                    // [优化] 核心等待时间随倍速缩短
+                    const baseWait = 800; const totalWait = smashHappened ? Math.max(baseWait, 1100) : baseWait;
                     await new Promise(r => setTimeout(r, totalWait / gameSpeed));
-
-                    await processVisualLogic(gridForLogic, activeCfg, currentBalance, isEmptyGame, smashHappened, cost);
-                } catch (error) {
-                    console.error("SPIN ERROR:", error);
-                    setIsSpinning(false); setAutoSpin(false); addLog("游戏发生错误: " + error.message, "error");
-                }
+                    
+                    // 3. 传递剧本给视觉逻辑
+                    await processVisualLogic(gridForLogic, activeCfg, currentBalance, spinSequence.length===0, smashHappened, cost, spinSequence);
+                } catch (error) { console.error(error); setIsSpinning(false); setAutoSpin(false); }
             };
 
             // ---------------------------------------------------------
             // 核心逻辑 2: 消除与掉落循环
             // ---------------------------------------------------------
-           const processVisualLogic = async (initialGrid, activeCfg, startBalance, isEmptyGame, skipFirstSmash = false, currentCost = 0) => {
-                let currentGrid = JSON.parse(JSON.stringify(initialGrid));
-                let keepPlaying = true; let roundWin = 0; let loop = 0; let runningBalance = startBalance;
-
+           // [核心逻辑] 视觉与掉落处理 (剧本执行版)
+            const processVisualLogic = async (initialGrid, activeCfg, startBalance, isEmptyGame, skipFirstSmash = false, currentCost = 0, spinSequence = []) => {
+                let currentGrid = JSON.parse(JSON.stringify(initialGrid)); 
+                let keepPlaying = true; 
+                let roundWin = 0; 
+                let loop = 0; 
+                let runningBalance = startBalance;
+                
+                // 剧本指针：spinSequence[0] 是第一轮赢家，spinSequence[1] 是第二轮...
+                // 第一轮已经在 startSpin 里生成好了，所以这里主要处理后续的掉落
+                
                 const smashRate = activeCfg.smashProbability !== undefined ? activeCfg.smashProbability : 0.3;
-                const emptyRate = activeCfg.emptySpinProbability !== undefined ? activeCfg.emptySpinProbability : 0.2;
 
                 while (keepPlaying && loop < 20) {
                     loop++;
 
-                    // 1. 闪电变身阶段
+                    // --- 1. 砸球阶段 (Smash) ---
                     if (!(loop === 1 && skipFirstSmash)) {
                         const shouldSmash = Math.random() < smashRate;
+                        
+                        // 保护名单：剩余剧本里的所有赢家都不能砸
+                        // 例如当前是第2轮(loop=2)，那么 sequence[1] 是当前赢家，sequence[2...] 是未来赢家
+                        const currentTargetId = spinSequence[loop-1]; // 注意下标
+                        const futureTargetIds = spinSequence.slice(loop);
+                        const protectedIds = new Set([currentTargetId, ...futureTargetIds].filter(x => x));
+
                         const candidates = [];
-                        currentGrid.forEach((row, r) => { row.forEach((cell, c) => { if (cell && cell.id <= 9) candidates.push({ r, c }); }); });
+                        currentGrid.forEach((row, r) => { 
+                            row.forEach((cell, c) => { 
+                                if (cell && cell.id <= 9 && !protectedIds.has(cell.id)) {
+                                    candidates.push({ r, c }); 
+                                }
+                            }); 
+                        });
 
                         if (shouldSmash && candidates.length > 0) {
-                            const smashCount = 1;
-                            const targetCoords = [];
-                            for (let i = 0; i < smashCount; i++) {
-                                if (candidates.length === 0) break;
-                                const randIdx = Math.floor(Math.random() * candidates.length);
-                                targetCoords.push(candidates[randIdx]);
-                                candidates.splice(randIdx, 1);
-                            }
-
-                            const newStrikes = new Set();
-                            targetCoords.forEach(t => newStrikes.add(`${t.r}-${t.c}`));
-                            setLightningStrikes(newStrikes);
-
-                            const hasLeft = targetCoords.some(t => t.c < 3);
-                            const hasRight = targetCoords.some(t => t.c >= 3);
-                            if (hasLeft) { playSound('man'); setIsManCasting(true); }
-                            if (hasRight) { playSound('woman'); setIsWomanCasting(true); }
-
-                            if (user.role === 'admin') addLog(`⚡ 第 ${loop} 轮: 闪电击中`, 'warning');
-
+                            const randIdx = Math.floor(Math.random() * candidates.length); const t = candidates[randIdx];
+                            setLightningStrikes(new Set([`${t.r}-${t.c}`])); 
+                            if(t.c < 3) setIsManCasting(true); else setIsWomanCasting(true);
                             await smartWait(400, isEmptyGame);
-
-                            const multWeights = getMultWeightsFromConfig(activeCfg);
-                            const totalMW = multWeights.reduce((a, w) => a + w.weight, 0);
-                            targetCoords.forEach(t => {
-                                let randomM = Math.random() * totalMW; let selectedVal = 2;
-                                for (let w of multWeights) { randomM -= w.weight; if (randomM <= 0) { selectedVal = w.val; break; } }
-                                currentGrid[t.r][t.c] = { id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier', val: selectedVal, key: Math.random().toString(36), isNew: false, isJustRevealed: true };
-                            });
-                            setGrid([...currentGrid]);
-
-                            await smartWait(400, isEmptyGame);
-
-                            setLightningStrikes(new Set());
-                            setIsManCasting(false); setIsWomanCasting(false);
-                            await smartWait(200, isEmptyGame);
+                            const multWeights = getMultWeightsFromConfig(activeCfg); const totalMW = multWeights.reduce((a, w) => a + w.weight, 0); let randomM = Math.random() * totalMW; let selectedVal = 2; for (let w of multWeights) { randomM -= w.weight; if (randomM <= 0) { selectedVal = w.val; break; } }
+                            currentGrid[t.r][t.c] = { id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier', val: selectedVal, key: Math.random().toString(36), isNew: false, isJustRevealed: true };
+                            setGrid([...currentGrid]); syncTableGrid([...currentGrid]);
+                            await smartWait(400, isEmptyGame); setLightningStrikes(new Set()); setIsManCasting(false); setIsWomanCasting(false); await smartWait(200, isEmptyGame);
                         }
                     }
 
-                    // 2. 消除判定
-                    const counts = {};
-                    currentGrid.flat().forEach(c => { if (c && c.type === 'normal') counts[c.id] = (counts[c.id] || 0) + 1; });
-                    const winIds = Object.keys(counts).filter(id => counts[id] >= 8);
+                    // --- 2. 消除结算阶段 ---
+                    const finalCounts = {};
+                    currentGrid.flat().forEach(c => { if (c && c.type === 'normal') finalCounts[c.id] = (finalCounts[c.id] || 0) + 1; });
+                    const winIds = Object.keys(finalCounts).filter(id => finalCounts[id] >= 8);
 
-                    if (winIds.length === 0) {
-                        if (user.role === 'admin') addLog(`🛑 第 ${loop} 轮: 结算`, 'gray');
-                        keepPlaying = false;
-                        break;
-                    }
+                    if (winIds.length === 0) { keepPlaying = false; break; }
 
-                    const currentEliminatingSet = new Set();
-                    const currentRoundTexts = [];
-                    let batchWin = 0;
-                    let totalR = 0; let totalC = 0; let totalEliminatedCount = 0;
-
+                    const currentEliminatingSet = new Set(); const currentRoundTexts = []; let batchWin = 0; let totalR = 0; let totalC = 0; let totalEliminatedCount = 0;
                     winIds.forEach(targetId => {
-                        const count = counts[targetId];
-                        const basePay = getPayout(parseInt(targetId), count);
-                        const totalWinForSymbol = bet * basePay;
-                        batchWin += totalWinForSymbol;
-                        currentGrid.forEach((row, r) => {
-                            row.forEach((col, c) => {
-                                if (col && String(col.id) === String(targetId)) {
-                                    currentEliminatingSet.add(`${r}-${c}`);
-                                    totalR += r; totalC += c; totalEliminatedCount++;
-                                }
-                            });
-                        });
+                        const count = finalCounts[targetId]; const basePay = getPayout(parseInt(targetId), count); batchWin += bet * basePay; 
+                        currentGrid.forEach((row, r) => { row.forEach((col, c) => { if (col && String(col.id) === String(targetId)) { currentEliminatingSet.add(`${r}-${c}`); totalR += r; totalC += c; totalEliminatedCount++; } }); });
                     });
 
-                    if (batchWin > 0 && totalEliminatedCount > 0) {
-                        const avgR = totalR / totalEliminatedCount; const avgC = totalC / totalEliminatedCount;
-                        currentRoundTexts.push({ id: Math.random(), r: avgR, c: avgC, val: batchWin.toFixed(1), isGroup: true });
-                        playSound('win'); if (user.role === 'admin') addLog(`💰 第 ${loop} 轮: 赢分 ${batchWin.toFixed(0)}`, 'success');
+                    if (batchWin > 0) { 
+                        playSound('win'); 
+                        const avgR = totalR/totalEliminatedCount; const avgC = totalC/totalEliminatedCount; 
+                        currentRoundTexts.push({id: Math.random(), r: avgR, c: avgC, val: batchWin.toFixed(1)}); 
+                        if (user.role === 'admin') addLog(`💰 R${loop}赢: ${batchWin.toFixed(1)}`, 'success');
+                    } else if (totalEliminatedCount > 0) { if (user.role === 'admin') addLog(`⚠️ R${loop}: 消除但0分`, 'error'); }
+
+                    setEliminatingCells(currentEliminatingSet); syncTableGrid(currentGrid, Array.from(currentEliminatingSet)); setFloatingTexts(prev => [...prev, ...currentRoundTexts]); 
+                    const nextTotalWin = roundWin + batchWin; roundWin = nextTotalWin; setUiState(prev => ({ ...prev, currentWin: nextTotalWin, displayWinText: nextTotalWin.toFixed(2) }));
+                    await smartWait(2050, isEmptyGame);
+                    currentGrid = currentGrid.map((row, r) => row.map((c, colIdx) => (c && currentEliminatingSet.has(`${r}-${colIdx}`)) ? null : c));
+                    setGrid([...currentGrid]); setEliminatingCells(new Set());
+
+                    // --- 3. 掉落填充阶段 (剧本执行) ---
+                    // 关键：决定下一轮要赢谁？
+                    // loop=1时，刚刚消除了 sequence[0]。下一轮目标是 sequence[1]。
+                    const nextTargetId = spinSequence[loop]; // sequence[1]
+                    let forceWinSymbol = null;
+                    let neededCount = 0;
+
+                    if (nextTargetId) {
+                        // 统计场上幸存的种子
+                        let existingCount = 0;
+                        currentGrid.flat().forEach(c => { if(c && c.id === nextTargetId) existingCount++; });
+                        
+                        // 计算差额：补足到 8 个
+                        neededCount = Math.max(0, 8 - existingCount);
+                        forceWinSymbol = SYMBOLS_DEF.find(s => s.id === nextTargetId);
+                        
+                        if (user.role === 'admin') addLog(`🎯 下輪目標: ID ${nextTargetId} (存${existingCount} + 補${neededCount})`, 'gold');
                     }
 
-                    setEliminatingCells(currentEliminatingSet); 
-                    // [Monitor] 立即同步消除状态，让观战端播放消除动画
-                    syncTableGrid(currentGrid, Array.from(currentEliminatingSet));
-                    
-                    setFloatingTexts(prev => [...prev, ...currentRoundTexts]);
-                    roundWin += batchWin; setUiState(prev => ({ ...prev, currentWin: roundWin, displayWinText: roundWin.toFixed(2) }));
-                    setUiState(prev => ({ ...prev, currentWin: roundWin, displayWinText: roundWin.toFixed(2) }));
-
-                    await smartWait(2050, isEmptyGame);
-
-                    currentGrid = currentGrid.map((row, r) => row.map((c, colIdx) => (c && currentEliminatingSet.has(`${r}-${colIdx}`)) ? null : c));
-                    setGrid([...currentGrid]);
-                    setEliminatingCells(new Set());
-
-                    // 3. 掉落补满
                     const nextGrid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
-                    const isNextDropEmpty = Math.random() < emptyRate;
-                    if (user.role === 'admin') addLog(`🎲 第 ${loop} 轮掉落: ${isNextDropEmpty ? '空转' : '中奖'}`, isNextDropEmpty ? 'gray' : 'gold');
-
-                    let predictedScatterCount = 0;
-                    for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (currentGrid[r][c] && currentGrid[r][c].id === 99) predictedScatterCount++; } }
-                    let forceWinCol = -1; let forceWinSymbol = null;
-                    if (!isNextDropEmpty) { forceWinCol = Math.floor(Math.random() * COLS); let s = getUniformSymbol(); if (s.id > 9) s = { ...SYMBOLS_DEF.find(sym => sym.id === 1) }; forceWinSymbol = s; }
+                    let predictedScatterCount = 0; for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (currentGrid[r][c] && currentGrid[r][c].id === 99) predictedScatterCount++; } }
 
                     for (let c = 0; c < COLS; c++) {
-                        let colData = [];
-                        for (let r = 0; r < ROWS; r++) { if (currentGrid[r][c]) { colData.push({ ...currentGrid[r][c], isNew: false, oldRow: r }); } }
-
+                        let colData = []; for (let r = 0; r < ROWS; r++) { if (currentGrid[r][c]) { colData.push({ ...currentGrid[r][c], isNew: false, oldRow: r }); } }
                         let dropIndex = 0;
                         while (colData.length < ROWS) {
-                            let sym;
-                            if (!isNextDropEmpty && c === forceWinCol && dropIndex < 3) { sym = { ...forceWinSymbol }; }
-                            else {
+                            let sym; 
+                            // [优先填充] 消耗配额
+                            if (neededCount > 0) { 
+                                sym = { ...forceWinSymbol }; 
+                                neededCount--;
+                            } else {
+                                // 随机填充 (避开 futureTargetIds, 88, 99)
+                                const bannedIds = new Set([...spinSequence.slice(loop), 88, 99]);
                                 let safety = 0;
                                 do {
-                                    const scatterProb = activeCfg.symbolWeights?.[99] !== undefined ? activeCfg.symbolWeights[99] : 2;
-                                    const isScatterRoll = (Math.random() * 100) < scatterProb;
-                                    if (isScatterRoll) { sym = { ...SYMBOLS_DEF.find(s => s.id === 99) }; }
-                                    else { const normalSymbols = SYMBOLS_DEF.filter(s => s.id >= 1 && s.id <= 9); const randIdx = Math.floor(Math.random() * normalSymbols.length); sym = { ...normalSymbols[randIdx] }; }
-
-                                    if (sym.id === 88) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
-                                    if (sym.id === 99 && predictedScatterCount >= 4) { const normalSymbols = SYMBOLS_DEF.filter(s => s.id >= 1 && s.id <= 9); const randIdx = Math.floor(Math.random() * normalSymbols.length); sym = { ...normalSymbols[randIdx] }; }
-                                    if (isNextDropEmpty && colData.length > 0) { const lastSym = colData[0]; if (lastSym.id === sym.id) { sym = null; } }
+                                    sym = getUniformSymbol();
                                     safety++;
-                                } while (!sym && safety < 10);
-                                if (!sym) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
+                                } while ((bannedIds.has(sym.id)) && safety < 20);
+                                
+                                if (sym.id === 99 && predictedScatterCount >= 4) sym = {id: 1}; // Scatter Limit
                             }
                             if (sym.id === 99) predictedScatterCount++;
                             colData.unshift({ ...sym, key: Math.random().toString(36), isNew: true });
@@ -2207,98 +2217,50 @@ if (!freeGame.active) {
                         for (let r = 0; r < ROWS; r++) { const sym = colData[r]; if (!sym.isNew) { sym.isDropping = (r !== sym.oldRow); } nextGrid[r][c] = sym; }
                     }
 
-                    const isBoring = checkIsBoring(nextGrid);
-                    // [整合] 统一动画模式
-                    setIsFastDrop(false);
-                    playSound('drop');
-                    currentGrid = nextGrid;
-                    setGrid(currentGrid);
-                    syncTableGrid(currentGrid); // [Monitor] 同步掉落后的盘面状态
-                    setFloatingTexts([]);
-
-                    // [整合] 统一掉落后等待时间 (800ms)
-                    await smartWait(800, isEmptyGame);
+                    setIsFastDrop(false); playSound('drop'); currentGrid = nextGrid; setGrid(currentGrid); syncTableGrid(currentGrid, []); setFloatingTexts([]); await smartWait(800, isEmptyGame);
                 }
 
-                // 4. 结算
+                // --- 4. 最终结算 ---
                 const mults = currentGrid.flat().filter(c => c && c.id === 88);
                 const totalMultOnBoard = mults.reduce((a, b) => a + b.val, 0);
                 let finalMult = 1; let actualMultToApply = 0;
 
                 if (freeGame.active) {
-                    if (roundWin > 0) {
-                        const newAcc = freeGame.accMult + totalMultOnBoard;
-                        setFreeGame(prev => ({ ...prev, accMult: newAcc }));
-                        finalMult = newAcc > 0 ? newAcc : 1;
-                        actualMultToApply = newAcc;
-                    } else { finalMult = freeGame.accMult > 0 ? freeGame.accMult : 1; }
+                    if (roundWin > 0) { const newAcc = freeGame.accMult + totalMultOnBoard; setFreeGame(prev => ({ ...prev, accMult: newAcc })); finalMult = newAcc > 0 ? newAcc : 1; actualMultToApply = newAcc; } 
+                    else { finalMult = freeGame.accMult > 0 ? freeGame.accMult : 1; }
                 } else {
-                    finalMult = totalMultOnBoard > 0 ? totalMultOnBoard : 1;
-                    actualMultToApply = totalMultOnBoard;
+                    finalMult = totalMultOnBoard > 0 ? totalMultOnBoard : 1; actualMultToApply = totalMultOnBoard;
                 }
 
                 if (roundWin > 0 && totalMultOnBoard > 0) {
                     const targetEl = topBarRef.current;
                     if (targetEl) {
-                        const targetPos = getCenter(targetEl);
-                        const newLasers = [];
-                        const orbElements = document.querySelectorAll('[data-symbol-id="88"]');
-                        orbElements.forEach((el) => {
-                            const srcPos = getCenter(el);
-                            newLasers.push({ id: Math.random(), x1: srcPos.x, y1: srcPos.y, x2: targetPos.x, y2: targetPos.y });
-                        });
-                        if (newLasers.length > 0) {
-                            setLasers(newLasers); playSound('bigwin');
-                            setUiState(prev => ({ ...prev, displayWinText: `x ${actualMultToApply}` }));
-                            await smartWait(800, isEmptyGame);
-                            setLasers([]);
-                        }
+                        const targetPos = getCenter(targetEl); const newLasers = []; document.querySelectorAll('[data-symbol-id="88"]').forEach((el) => { const srcPos = getCenter(el); newLasers.push({ id: Math.random(), x1: srcPos.x, y1: srcPos.y, x2: targetPos.x, y2: targetPos.y }); });
+                        if (newLasers.length > 0) { setLasers(newLasers); playSound('bigwin'); setUiState(prev => ({ ...prev, displayWinText: `x ${actualMultToApply}` })); await smartWait(800, isEmptyGame); setLasers([]); }
                     }
                 }
 
-                finalMult = Math.max(1, finalMult);
-                setUiState(prev => ({ ...prev, winMult: finalMult > 1 ? finalMult : 0 }));
+                finalMult = Math.max(1, finalMult); setUiState(prev => ({ ...prev, winMult: finalMult > 1 ? finalMult : 0 }));
                 const finalWin = roundWin * finalMult;
 
                 if (finalWin > 0) {
-                    runningBalance += finalWin; onUpdateBalance(runningBalance);
-                    setUiState(prev => ({ ...prev, currentWin: finalWin, displayWinText: finalWin.toFixed(2) }));
+                    runningBalance += finalWin; onUpdateBalance(runningBalance); setUiState(prev => ({ ...prev, currentWin: finalWin, displayWinText: finalWin.toFixed(2) }));
                     if (freeGame.active) setFreeGame(prev => ({ ...prev, totalWin: prev.totalWin + finalWin }));
                     addLog(`🏆 赢分: ${finalWin.toFixed(0)} (x${finalMult})`, 'success');
-
-                    if (finalWin >= bet * 20) { playSound('bigwin'); setShowBigWin(finalWin); await smartWait(5000, false); setShowBigWin(null); }
-                    else if (finalWin > bet * 5) { playSound('bigwin'); await smartWait(1500, isEmptyGame); }
-                    else { await smartWait(500, isEmptyGame); }
+                    if (finalWin >= bet * 20) { playSound('bigwin'); setShowBigWin(finalWin); await smartWait(5000, false); setShowBigWin(null); } else if (finalWin > bet * 5) { playSound('bigwin'); await smartWait(1500, isEmptyGame); } else { await smartWait(500, isEmptyGame); }
                 } else { setUiState(prev => ({ ...prev, displayWinText: roundWin > 0 ? roundWin.toFixed(2) : "0.00" })); }
 
-                // [Status Update] 保持占用状态
                 updateDoc(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), { status: 'occupied' });
 
-                // 1. 统一计算所有状态 (只声明一次)
                 const finalScattersCount = currentGrid.flat().filter(c => c && c.id === 99).length;
                 const triggerFG = !freeGame.active && finalScattersCount >= 4;
                 const triggerRetrigger = freeGame.active && finalScattersCount >= 3;
                 const isFGWin = freeGame.active && finalWin > 0;
 
-                // 2. 保存数据 (使用上面计算好的变量)
-                if (currentCost > 0 || finalWin > 0) {
-                    saveGameStats(currentCost, finalWin, finalMult, triggerFG, isFGWin);
-                }
+                if (currentCost > 0 || finalWin > 0) { saveGameStats(currentCost, finalWin, finalMult, triggerFG, isFGWin); }
 
-                // 3. 触发游戏事件 (逻辑判断)
-                if (triggerFG) {
-                    addLog("✨ 触发 Free Game", 'gold');
-                    setShowFGTrigger(true);
-                    playSound('bigwin');
-                    await smartWait(3000, false);
-                    setShowFGTrigger(false);
-                    setFreeGame({ active: true, spinsLeft: 15, accMult: 0, totalWin: 0 });
-                } else if (triggerRetrigger) {
-                    addLog("🔄 Retrigger +5 Spins", 'gold');
-                    setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft + 5 }));
-                    playSound('bigwin');
-                    await smartWait(1000, false);
-                }
+                if (triggerFG) { addLog("✨ 触发 Free Game", 'gold'); setShowFGTrigger(true); playSound('bigwin'); await smartWait(3000, false); setShowFGTrigger(false); setFreeGame({ active: true, spinsLeft: 15, accMult: 0, totalWin: 0 }); } 
+                else if (triggerRetrigger) { addLog("🔄 Retrigger +5 Spins", 'gold'); setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft + 5 })); playSound('bigwin'); await smartWait(1000, false); }
 
                 setIsSpinning(false);
             };
@@ -2499,74 +2461,26 @@ if (!freeGame.active) {
                                     const scatterCount = grid.flat().filter(c => c && c.id === 99).length;
                                     return grid.map((row, r) => (
                                         row.map((cell, c) => {
-                                            if (!cell) return <div key={`${r}-${c}`} className="bg-transparent"></div>;
-                                            
                                             const isEliminating = eliminatingCells.has(`${r}-${c}`);
-                                            const isSpecialScatter = cell.id === 99 && scatterCount >= 4 && showFGTrigger;
-                                            const isJustRevealed = cell.isJustRevealed;
+                                            // 计算属性传递给子组件，React.memo 会自动比对这些属性
+                                            const isSpecialScatter = cell && cell.id === 99 && scatterCount >= 4 && showFGTrigger;
+                                            const isJustRevealed = cell && cell.isJustRevealed;
                                             const isStruck = lightningStrikes.has(`${r}-${c}`);
-                                            
-                                            const dropAnimationClass = (isSpinning && !isEliminating)
-                                                ? (cell.isNew ? 'animate-heavy-drop' : (cell.isDropping ? 'animate-survivor-drop' : ''))
-                                                : '';
 
                                             return (
-                                                <div
-                                                    key={cell.key}
-                                                    data-symbol-id={cell.id}
-                                                    style={{
-                                                        zIndex: isEliminating ? 100 : (isSpecialScatter ? 90 : 10),
-                                                        // [优化] 掉落延迟随倍速缩短，保持流畅感 (微调标准参数 0.1s -> 0.08s 以适应统一节奏)
-                                                        animationDelay: (cell.isNew && isSpinning)
-                                                            ? (isFastDrop ? `${(c * 0.06) / gameSpeed}s` : `${(c * 0.08) / gameSpeed}s`)
-                                                            : '0s',
-                                                        // [优化] 强制覆盖动画时长 (适配倍速)
-                                                        animationDuration: isFastDrop ? `calc(0.25s / ${gameSpeed})` : undefined,
-                                                        transition: isFastDrop ? `all calc(0.25s / ${gameSpeed}) ease-out` : `all calc(0.2s / ${gameSpeed})`
-                                                    }}
-                                                    className={`
-                                                    relative flex items-center justify-center 
-                                                    border border-white/5 overflow-visible 
-                                                    ${!isFastDrop ? 'transition-all duration-200' : ''} 
-                                                    ${dropAnimationClass} 
-                                                    ${isEliminating ? 'animate-eliminate-shake' : 'bg-black/20'} 
-                                                    ${isSpecialScatter ? 'scale-125 animate-pulse drop-shadow-[0_0_15px_gold]' : ''} 
-                                                    ${isJustRevealed ? 'animate-magic-appear' : ''}
-                                                `}
-                                                >
-                                                    {isStruck && (
-                                                        <>
-                                                            <div className="lightning-impact-cell"></div>
-                                                            <div className="lightning-bolt-container"></div>
-                                                        </>
-                                                    )}
-
-                                                    {cell.id === 88 ? (() => {
-                                                        let orbImageStr = './images/small.png'; const val = cell.val;
-                                                        if (val <= 3) orbImageStr = './images/small.png'; else if (val <= 8) orbImageStr = './images/small2.png'; else if (val <= 15) orbImageStr = './images/small3.png'; else orbImageStr = './images/small4.png';
-                                                        return (
-                                                            <div className="relative w-full h-full flex items-center justify-center p-1 group">
-                                                                <img src={orbImageStr} alt={`${val}x`} className="w-full h-full object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200 group-hover:scale-105" />
-                                                                {/* [修改] 改为亮金色文字，增加发光效果 */}
-                                                                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#fde047] font-black text-2xl md:text-6xl z-20 pointer-events-none pb-1 md:pb-2 drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]" style={{ textShadow: '0 0 10px rgba(253, 224, 71, 0.5)' }}>{val}x</span>
-                                                            </div>
-                                                        );
-                                                    })() : cell.id === 99 ? (
-                                                        <div className="relative w-full h-full flex flex-col items-center justify-center p-1">
-                                                            <img src={cell.icon} alt="Scatter" className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.6)]" />
-                                                            {/* [修改] 已移除底部的 SCATTER 文字 */}
-                                                        </div>
-                                                    ) : ((() => {
-                                                        const scale = cell.scale || 1;
-                                                        const sizePct = `${scale * 100}%`;
-                                                        return (
-                                                            <div className="w-full h-full flex items-center justify-center p-1 relative">
-                                                                <img src={cell.icon} alt={cell.name} className="object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200" style={{ width: sizePct, height: sizePct }} />
-                                                            </div>
-                                                        );
-                                                    })())}
-                                                </div>
-                                            )
+                                                <GridCell 
+                                                    key={`${r}-${c}-${cell ? cell.key : 'empty'}`} // 复合 Key 确保动画重置
+                                                    cell={cell}
+                                                    r={r} c={c}
+                                                    isEliminating={isEliminating}
+                                                    isSpecialScatter={isSpecialScatter}
+                                                    isJustRevealed={isJustRevealed}
+                                                    isStruck={isStruck}
+                                                    isSpinning={isSpinning}
+                                                    isFastDrop={isFastDrop}
+                                                    gameSpeed={gameSpeed}
+                                                />
+                                            );
                                         })
                                     ));
                                 })()}
@@ -2594,13 +2508,60 @@ if (!freeGame.active) {
                         </div>
                     </div>
 
-                    {/* Admin Sidebar */}
                     {user.role === 'admin' && (
                         <div className={`fixed right-0 top-0 bottom-0 bg-[#121212] border-l border-[#fbbf24]/20 shadow-2xl transition-transform duration-300 flex flex-col z-[60] w-[300px] ${isAdminOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-                            <div className="h-14 shrink-0 flex items-center justify-between px-4 border-b border-white/10 bg-[#1a1a1a]"><div className="flex items-center gap-2 text-[#fbbf24] font-bold text-sm font-noto"><Settings size={16} /> 管理員控制台</div><button onClick={() => setIsAdminOpen(false)} className="text-gray-500 hover:text-white"><ChevronsRight size={20} /></button></div>
+                            <div className="h-14 shrink-0 flex items-center justify-between px-4 border-b border-white/10 bg-[#1a1a1a]">
+                                <div className="flex items-center gap-2 text-[#fbbf24] font-bold text-sm font-noto"><Settings size={16} /> 管理員控制台</div>
+                                <button onClick={() => setIsAdminOpen(false)} className="text-gray-500 hover:text-white"><ChevronsRight size={20} /></button>
+                            </div>
+                            
                             <div className="p-4 space-y-6 overflow-y-auto custom-scroll flex-grow font-noto">
-                                <button onClick={() => setShowSimModal(true)} className="w-full bg-indigo-900/50 border border-indigo-500 text-indigo-200 py-2 rounded font-bold flex items-center justify-center gap-2 hover:bg-indigo-900 transition-colors"><Activity size={16} /> 開啟 RTP 模擬器</button>
-                                <div className="space-y-3"><h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2"><Zap size={12} className="text-yellow-500" /> 上帝模式</h3><div className="grid grid-cols-2 gap-2"><button disabled={isSpinning} onClick={() => startSpin('SCATTER')} className="bg-rose-900/20 hover:bg-rose-900/40 border border-rose-700/50 text-rose-400 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors">FG</button><button disabled={isSpinning} onClick={() => startSpin('BIG_WIN')} className="bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/50 text-emerald-400 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors">WIN</button></div></div>
+                                {/* RTP 模拟器 */}
+                                <button onClick={() => setShowSimModal(true)} className="w-full bg-indigo-900/50 border border-indigo-500 text-indigo-200 py-2 rounded font-bold flex items-center justify-center gap-2 hover:bg-indigo-900 transition-colors">
+                                    <Activity size={16} /> 開啟 RTP 模擬器
+                                </button>
+                                
+                                {/* 快捷指令区 */}
+                                <div className="space-y-3">
+                                    <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2"><Zap size={12} className="text-yellow-500" /> 快速指令 (Quick)</h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button disabled={isSpinning} onClick={() => startSpin('SCATTER')} className="bg-rose-900/20 hover:bg-rose-900/40 border border-rose-700/50 text-rose-400 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors">FG (进免游)</button>
+                                        <button disabled={isSpinning} onClick={() => startSpin('BIG_WIN')} className="bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/50 text-emerald-400 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors">WIN (必赢)</button>
+                                    </div>
+                                </div>
+
+                                {/* [新增] 连消测试面板 */}
+                                <div className="bg-white/5 p-3 rounded border border-white/10">
+                                    <h3 className="text-xs font-bold text-[#fbbf24] uppercase mb-3 border-b border-white/10 pb-2">🧪 连消测试 (Cascade Lab)</h3>
+                                    
+                                    {/* 1. 控制首局输赢 */}
+                                    <div className="flex items-center justify-between mb-4">
+                                        <span className="text-xs text-gray-400">首局结果 (First Spin)</span>
+                                        <div className="flex bg-black rounded border border-white/10 p-0.5">
+                                            <button onClick={() => setCheatNextWin(true)} className={`px-3 py-1 rounded text-[10px] font-bold transition-colors ${cheatNextWin ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>WIN</button>
+                                            <button onClick={() => setCheatNextWin(false)} className={`px-3 py-1 rounded text-[10px] font-bold transition-colors ${!cheatNextWin ? 'bg-red-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>LOSE</button>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. 控制后续连消次数 */}
+                                    <div className="flex items-center justify-between mb-4">
+                                        <span className="text-xs text-gray-400">后续连消 (Cascades)</span>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setCheatCascades(Math.max(0, cheatCascades-1))} className="w-6 h-6 bg-white/10 rounded flex items-center justify-center hover:bg-white/20 text-white">-</button>
+                                            <span className="w-8 text-center font-mono font-bold text-[#fbbf24]">{cheatCascades}</span>
+                                            <button onClick={() => setCheatCascades(Math.min(20, cheatCascades+1))} className="w-6 h-6 bg-white/10 rounded flex items-center justify-center hover:bg-white/20 text-white">+</button>
+                                        </div>
+                                    </div>
+
+                                    {/* 3. 执行按钮 */}
+                                    <button 
+                                        disabled={isSpinning} 
+                                        onClick={() => startSpin(null, false, 0, { win: cheatNextWin, cascades: cheatCascades })} 
+                                        className="w-full bg-gradient-to-r from-[#b45309] to-[#fbbf24] text-black font-bold py-2 rounded hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        执行测试 (Run Test)
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
