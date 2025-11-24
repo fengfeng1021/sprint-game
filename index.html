@@ -769,26 +769,20 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
         ];
 
         // ---------------------------------------------------------
-        // 核心邏輯重整：權重與盤面生成
+        // 核心邏輯重整：權重與盤面生成 (已修復重複宣告問題)
         // ---------------------------------------------------------
 
-        // 1. 讀取符號權重 (已過濾 ID 88)
+        // 1. 讀取符號權重
         const getWeightsFromConfig = (cfg) => {
             const c = cfg || DEFAULT_CONFIG;
             const weights = [];
-            // 兼容舊版與新版結構
             const sourceWeights = c.symbolWeights || DEFAULT_CONFIG.symbolWeights;
-
             for (const [idStr, weight] of Object.entries(sourceWeights)) {
                 const id = Number(idStr);
-                // [安全] 強制過濾 ID 88，防止生成函數卡死
                 if (id === 88) continue;
                 weights.push({ id: id, weight: Number(weight) });
             }
-
-            // [防呆] 如果權重全空，回傳預設 ID 1
             if (weights.length === 0) return [{ id: 1, weight: 100 }];
-
             return weights;
         };
 
@@ -801,55 +795,43 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             return Object.entries(c.multiplierWeights).map(([val, weight]) => ({ val: Number(val), weight: Number(weight) }));
         };
 
-        // 3. 獲取隨機符號 (基礎函數)
+        // 3. 獲取隨機符號
         const getRandomSymbolData = (currentConfig) => {
             const weights = getWeightsFromConfig(currentConfig);
             const totalWeight = weights.reduce((acc, w) => acc + w.weight, 0);
             let random = Math.random() * totalWeight;
-            let selectedId = 1; // 預設值
-
+            let selectedId = 1;
             for (let w of weights) {
                 random -= w.weight;
                 if (random <= 0) { selectedId = w.id; break; }
             }
-
-            // 從定義檔找資料，如果找不到就回傳 ID 1 (防崩潰)
             const base = SYMBOLS_DEF.find(s => s.id === selectedId) || SYMBOLS_DEF[0];
             return { ...base };
         };
 
-        // --- [新增] 平均分布符号生成 (Uniform Random) ---
+        // 新增: 平均分布符號
         const getUniformSymbol = () => {
-            // 1. 筛选出所有允许掉落的符号 (排除 ID 88)
             const validSymbols = SYMBOLS_DEF.filter(s => s.id !== 88);
-
-            // 2. 等概率随机抽取 (1 / N)
             const randIndex = Math.floor(Math.random() * validSymbols.length);
-
-            // 3. 返回符号数据的副本
             return { ...validSymbols[randIndex] };
         };
 
-       // 4. [必输] 生成必输盘面 (动画修复版)
+        // 4. 生成必輸盤面
         const generateLosingGrid = (cfg) => {
             const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
             const counts = {};
-
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS; c++) {
                     let sym;
                     let isValid = false;
                     let attempts = 0;
-
                     while (attempts < 20) {
                         sym = getUniformSymbol();
                         const id = sym.id;
                         const currentCount = counts[id] || 0;
-                        let countLimit = (id === 99) ? 2 : 7; // Scatter限制2个，普通限制7个(不足8)
-                        
+                        let countLimit = (id === 99) ? 2 : 7;
                         const left = c > 0 ? grid[r][c - 1] : null;
                         const top = r > 0 ? grid[r - 1][c] : null;
-
                         if (currentCount < countLimit) {
                             if ((left && left.id === id) || (top && top.id === id)) { isValid = false; } 
                             else { isValid = true; }
@@ -857,7 +839,6 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                         if (isValid) break;
                         attempts++;
                     }
-
                     if (!isValid) {
                         let safeId = 1;
                         const leftId = c > 0 ? grid[r][c - 1]?.id : -1;
@@ -866,21 +847,17 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                         const base = SYMBOLS_DEF.find(s => s.id === safeId) || SYMBOLS_DEF[0];
                         sym = { ...base };
                     }
-
                     counts[sym.id] = (counts[sym.id] || 0) + 1;
-                    // [修复] 强制添加 isNew: true 触发下落动画，添加 Key 强制重绘
                     grid[r][c] = { ...sym, isNew: true, key: Math.random().toString(36) };
                 }
             }
             return grid;
         };
 
-        // 5. [必胜] 生成必胜盘面 (动画修复版)
+        // 5. 生成必勝盤面
         const generateWinningGrid = (cfg, isFG = false) => {
             const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
             const usedPos = new Set();
-
-            // 1. 决定中奖主角
             let targetSym = null;
             do { targetSym = getRandomSymbolData(cfg); } while (!targetSym || targetSym.id === 88);
             
@@ -888,21 +865,18 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             const targetId = targetSym.id;
             let winCount = isWinFG ? 4 : (8 + Math.floor(Math.random() * 2));
 
-            // 2. 放置中奖符号
             let placed = 0;
             while (placed < winCount) {
                 const r = Math.floor(Math.random() * ROWS);
                 const c = Math.floor(Math.random() * COLS);
                 const key = `${r}-${c}`;
                 if (!usedPos.has(key)) {
-                    // [修复] 添加 isNew
                     grid[r][c] = { ...targetSym, isNew: true, key: Math.random().toString(36) };
                     usedPos.add(key);
                     placed++;
                 }
             }
 
-            // 3. 填充干扰项
             const currentCounts = {};
             currentCounts[targetId] = winCount;
             let scatterCount = isWinFG ? 4 : 0;
@@ -924,10 +898,8 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                             let safeId = 1; if (targetId === 1) safeId = 2;
                             filler = { ...SYMBOLS_DEF.find(s => s.id === safeId) };
                         }
-
                         if (filler.id === 99) scatterCount++;
                         currentCounts[filler.id] = (currentCounts[filler.id] || 0) + 1;
-                        // [修复] 添加 isNew
                         grid[r][c] = { ...filler, isNew: true, key: Math.random().toString(36) };
                     }
                 }
@@ -935,7 +907,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             return grid;
         };
 
-        // 6. [随机] 纯随机生成 (动画修复版)
+        // 6. 純隨機生成
         const generateGridData = (cfg) => {
             let scatterCount = 0;
             return Array(ROWS).fill(null).map(() =>
@@ -948,19 +920,16 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                         if (sym.id === 99 && scatterCount >= 4) sym = null;
                         safety++;
                     } while (!sym && safety < 10);
-
                     if (!sym) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
                     if (sym.id === 99) scatterCount++;
-
-                    // [修复] 添加 isNew
                     return { ...sym, isNew: true, key: Math.random().toString(36) };
                 })
             );
         };
 
-        // 7. [作弊] God Mode 生成
+        // 7. God Mode 生成
         const generateRiggedGrid = (cfg, type) => {
-            let grid = generateGridData(cfg); // 使用純隨機為底
+            let grid = generateGridData(cfg);
             if (type === 'SCATTER') {
                 let positions = [];
                 while (positions.length < 4) {
@@ -972,7 +941,6 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                     grid[p.r][p.c] = { ...SYMBOLS_DEF.find(s => s.id === 99) };
                 });
             } else if (type === 'BIG_WIN') {
-                // 強制放 12 個 ID 9 (Eye)
                 let count = 0;
                 const target = SYMBOLS_DEF.find(s => s.id === 9);
                 for (let r = 0; r < ROWS; r++) {
@@ -987,6 +955,111 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             return grid;
         };
 
+        // =================================================================
+        // [關鍵修復] 核心運算區塊 (模擬器與遊戲共用) - 確保只有一份定義
+        // =================================================================
+
+        // [Core] 1. 生成劇本
+        const calculateSpinSequence = (config, cheat) => {
+            const sequence = [];
+            const usedIds = new Set();
+            let totalCascades = 0;
+            if (cheat && cheat.win !== undefined) {
+                if (!cheat.win) return []; 
+                if (cheat.cascades !== undefined && cheat.cascades !== null) {
+                    totalCascades = cheat.cascades;
+                } else {
+                    const prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
+                    while (Math.random() < prob && totalCascades < 20) { totalCascades++; prob *= 0.8; }
+                }
+            } else {
+                const emptyRate = config.emptySpinProbability || 0.2;
+                if (Math.random() < emptyRate) return []; 
+                let prob = 0.5; while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 0.8; }
+            }
+
+            for (let i = 0; i <= totalCascades; i++) {
+                let sym;
+                let safe = 0;
+                do {
+                    sym = getRandomSymbolData(config);
+                    safe++;
+                    let isInvalid = false;
+                    if (sym.id === 88) isInvalid = true;
+                    if (usedIds.has(sym.id)) isInvalid = true;
+                    if (sym.id === 99 && i > 0) isInvalid = true; 
+                    if (sym.id > 9 && sym.id !== 99) isInvalid = true; 
+                    if (!isInvalid) break;
+                } while (safe < 20);
+                
+                if (sym.id === 88 || (sym.id === 99 && i > 0) || (sym.id > 9 && sym.id !== 99) || usedIds.has(sym.id)) {
+                    const available = [1,2,3,4,5,6,7,8,9].filter(id => !usedIds.has(id));
+                    if (available.length > 0) sym = { id: available[Math.floor(Math.random() * available.length)] };
+                    else sym = { id: 1 }; 
+                }
+                sequence.push(sym.id);
+                usedIds.add(sym.id);
+                if (sym.id === 99) break;
+            }
+            return sequence;
+        };
+
+        // [Core] 2. 生成種子盤面
+        const generateSeededGrid = (sequence, config, isFG = false) => {
+            const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+            const cells = [];
+            for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) cells.push({r,c});
+            const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+            shuffle(cells);
+
+            // A. 放置首局贏家
+            if (sequence.length > 0) {
+                const winId = sequence[0];
+                const count = (winId === 99) ? 4 : (8 + Math.floor(Math.random() * 2));
+                for(let i=0; i<count; i++) {
+                    if(cells.length === 0) break;
+                    const pos = cells.pop();
+                    grid[pos.r][pos.c] = { ...SYMBOLS_DEF.find(s => s.id === winId), key: Math.random().toString(36), isNew: true };
+                }
+            }
+            // B. 放置後續贏家
+            for (let i = 1; i < sequence.length; i++) {
+                const futureId = sequence[i];
+                const seedCount = 5 + Math.floor(Math.random() * 2);
+                for(let k=0; k<seedCount; k++) {
+                    if(cells.length === 0) break;
+                    const pos = cells.pop();
+                    grid[pos.r][pos.c] = { ...SYMBOLS_DEF.find(s => s.id === futureId), key: Math.random().toString(36), isNew: true };
+                }
+            }
+            // C. 填充剩餘
+            const bannedIds = new Set([...sequence, 88]); 
+            const currentCounts = {};
+            grid.flat().forEach(c => { if(c && c.id) currentCounts[c.id] = (currentCounts[c.id] || 0) + 1; });
+
+            while(cells.length > 0) {
+                const pos = cells.pop();
+                let sym = null;
+                let safe = 0;
+                do { 
+                    let candidate = getRandomSymbolData(config); 
+                    if (bannedIds.has(candidate.id) || candidate.id === 88) candidate = null;
+                    else {
+                        const cnt = currentCounts[candidate.id] || 0;
+                        const isScriptedFG = (sequence.length > 0 && sequence[0] === 99);
+                        if (candidate.id === 99 && !isScriptedFG && cnt >= 3) candidate = null;
+                        else if (candidate.id !== 99 && cnt >= 7) candidate = null;
+                    }
+                    if(candidate) sym = candidate;
+                    safe++;
+                } while(!sym && safe < 30);
+                if (!sym) sym = { ...SYMBOLS_DEF[0] };
+                currentCounts[sym.id] = (currentCounts[sym.id] || 0) + 1;
+                grid[pos.r][pos.c] = { ...sym, key: Math.random().toString(36), isNew: true };
+            }
+            return grid;
+        };
+
         const getPayout = (id, count) => {
             const s = SYMBOLS_DEF.find(sym => sym.id === id);
             if (!s || !s.payout) return 0;
@@ -994,6 +1067,181 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             if (count >= 10) return s.payout[10];
             if (count >= 8) return s.payout[8];
             return 0;
+        };
+
+        // [Core] 3. 核心邏輯純運算引擎 (模擬器與遊戲共用)
+        const calculateSpinResult = (config, bet, isFG, currentAccMult = 0) => {
+            // 1. 生成劇本
+            const spinSequence = calculateSpinSequence(config, null); 
+
+            // 2. 生成初始盤面
+            let grid = spinSequence.length > 0 
+                ? generateSeededGrid(spinSequence, config, isFG) 
+                : generateLosingGrid(config);
+
+            let roundWin = 0;
+            let loop = 0;
+            let active = true;
+            let smashHappenedInLoop1 = false;
+            let currentGrid = JSON.parse(JSON.stringify(grid)); // 深拷貝
+            
+            // 統計數據回傳用
+            let smashCount = 0;
+            let multsFound = [];
+
+            // --- 初始砸球邏輯 ---
+            const smashRate = config.smashProbability !== undefined ? config.smashProbability : 0.3;
+            let protectedIds = new Set(spinSequence);
+            let candidates = [];
+            for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+                if(currentGrid[r][c] && currentGrid[r][c].id <= 9 && !protectedIds.has(currentGrid[r][c].id)) {
+                    candidates.push({r,c});
+                }
+            }
+
+            if (spinSequence.length > 0 && Math.random() < smashRate && candidates.length > 0) {
+                let count = getSmashCount(); 
+                count = Math.min(count, candidates.length);
+                for(let i=0; i<count; i++) {
+                    const idx = Math.floor(Math.random() * candidates.length);
+                    const t = candidates[idx];
+                    candidates.splice(idx, 1);
+                    const val = getRandomMultiplierSmart(config); 
+                    currentGrid[t.r][t.c] = { id: 88, val: val, type: 'mult' };
+                    multsFound.push(val);
+                }
+                smashCount++;
+                smashHappenedInLoop1 = true;
+            }
+
+            // --- 消除循環 ---
+            while (active && loop < 20) {
+                loop++;
+
+                // A. 循環內砸球
+                if (!(loop === 1 && smashHappenedInLoop1)) {
+                    const currentTargetId = spinSequence[loop - 1];
+                    const futureTargetIds = spinSequence.slice(loop);
+                    const protectedIdsLoop = new Set([currentTargetId, ...futureTargetIds].filter(x => x));
+                    let loopCandidates = [];
+                    for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+                        if(currentGrid[r][c] && currentGrid[r][c].id <= 9 && !protectedIdsLoop.has(currentGrid[r][c].id)) {
+                            loopCandidates.push({r,c});
+                        }
+                    }
+                    if (Math.random() < smashRate && loopCandidates.length > 0) {
+                        let count = getSmashCount();
+                        count = Math.min(count, loopCandidates.length);
+                        for(let i=0; i<count; i++) {
+                            const idx = Math.floor(Math.random() * loopCandidates.length);
+                            const t = loopCandidates[idx];
+                            loopCandidates.splice(idx, 1);
+                            const val = getRandomMultiplierSmart(config);
+                            currentGrid[t.r][t.c] = { id: 88, val: val, type: 'mult' };
+                            multsFound.push(val);
+                        }
+                        smashCount++;
+                    }
+                }
+
+                // B. 消除結算
+                const counts = {};
+                currentGrid.flat().forEach(c => { if(c && c.type === 'normal') counts[c.id] = (counts[c.id] || 0) + 1; });
+                
+                let winIds = Object.keys(counts).filter(id => counts[id] >= 8);
+                
+                if (spinSequence.length > 0) {
+                    const targetScriptId = spinSequence[loop - 1];
+                    if (targetScriptId) winIds = winIds.filter(id => Number(id) === Number(targetScriptId));
+                    else winIds = [];
+                } else {
+                    winIds = [];
+                }
+
+                if (winIds.length === 0) { active = false; break; }
+
+                let batchWin = 0;
+                const eliminatedSet = new Set();
+                winIds.forEach(id => {
+                    batchWin += bet * getPayout(Number(id), counts[id]);
+                    for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+                        if(currentGrid[r][c] && String(currentGrid[r][c].id) === String(id)) eliminatedSet.add(`${r}-${c}`);
+                    }
+                });
+                roundWin += batchWin;
+
+                // C. 掉落填充
+                const nextTargetId = spinSequence[loop];
+                let forceSym = nextTargetId ? SYMBOLS_DEF.find(s => s.id === nextTargetId) : null;
+                const boardCounts = {};
+                currentGrid.flat().forEach((c, i) => {
+                    const r = Math.floor(i / COLS);
+                    const col = i % COLS;
+                    if (c && !eliminatedSet.has(`${r}-${col}`)) boardCounts[c.id] = (boardCounts[c.id] || 0) + 1;
+                });
+                
+                let neededCount = forceSym ? Math.max(0, 8 - (boardCounts[forceSym.id] || 0)) : 0;
+                const nextGrid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+                
+                for (let c = 0; c < COLS; c++) {
+                    let colData = [];
+                    for (let r = 0; r < ROWS; r++) { 
+                        if (currentGrid[r][c] && !eliminatedSet.has(`${r}-${c}`)) colData.push(currentGrid[r][c]);
+                    }
+                    while (colData.length < ROWS) {
+                        let sym = null;
+                        if (neededCount > 0) {
+                            sym = { ...forceSym }; neededCount--;
+                        } else {
+                            const bannedIds = new Set([...spinSequence.slice(loop), 88]);
+                            let safety = 0;
+                            do {
+                                let candidate = getRandomSymbolData(config);
+                                if (bannedIds.has(candidate.id)) candidate = null;
+                                else if (candidate.id === 99) {
+                                     const isNextScriptFG = (nextTargetId === 99);
+                                     if (!isNextScriptFG && (boardCounts[99] || 0) >= 3) candidate = null;
+                                     else if ((boardCounts[99] || 0) >= 4) candidate = null;
+                                }
+                                else if (candidate.id !== 99 && (boardCounts[candidate.id] || 0) >= 7 && candidate.id !== nextTargetId) candidate = null;
+                                if(candidate) sym = candidate;
+                                safety++;
+                            } while(!sym && safety < 20);
+                            if (!sym) sym = { ...SYMBOLS_DEF.find(s=>s.id===1) };
+                        }
+                        if(sym.id) boardCounts[sym.id] = (boardCounts[sym.id] || 0) + 1;
+                        colData.unshift(sym);
+                    }
+                    for(let r=0; r<ROWS; r++) nextGrid[r][c] = colData[r];
+                }
+                currentGrid = nextGrid;
+            }
+
+            // --- 最終結算 ---
+            const mults = currentGrid.flat().filter(c => c && c.id === 88);
+            const totalMultOnBoard = mults.reduce((a, b) => a + b.val, 0);
+            let finalMult = 1;
+            let newAccMult = currentAccMult;
+
+            if (isFG) {
+                if (roundWin > 0) {
+                    newAccMult += totalMultOnBoard;
+                    finalMult = newAccMult > 0 ? newAccMult : 1;
+                } else {
+                    finalMult = newAccMult > 0 ? newAccMult : 1;
+                }
+            } else {
+                finalMult = totalMultOnBoard > 0 ? totalMultOnBoard : 1;
+            }
+
+            return {
+                win: roundWin * finalMult,
+                mult: finalMult,
+                newAccMult: newAccMult,
+                scatters: currentGrid.flat().filter(c => c && c.id === 99).length,
+                smashCount: smashCount,
+                multsFound: multsFound
+            };
         };
 
         function PermissionErrorModal({ isOpen }) {
@@ -1083,7 +1331,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
         }
 
         // ------------------------------------------------------------
-        // 3. 真实逻辑 RTP 模拟器 (中文介面版)
+        // 3. 真实逻辑 RTP 模拟器 (中文介面版) - 已更新為核心運算引擎
         // ------------------------------------------------------------
         function SimulatorModal({ isOpen, onClose, config }) {
             const [simCount, setSimCount] = useState(1000);
@@ -1092,7 +1340,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             const [progress, setProgress] = useState(0);
             const [stats, setStats] = useState(null);
 
-            // 辅助：深拷贝 Grid
+            // 輔助：深拷貝 Grid (此函數在此模式下已不需要，但保留以防萬一)
             const cloneGrid = (g) => g.map(row => row.map(c => ({ ...c })));
 
             // --- 翻譯對照表 (用於贏分分佈) ---
@@ -1105,160 +1353,19 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                 "100x+": "超巨獎 (100倍+)"
             };
 
+            // [核心替換] 使用 calculateSpinResult 進行模擬
             const runSim = async () => {
                 if (simCount <= 0) return;
                 setIsRunning(true); setProgress(0); setStats(null);
 
                 const totalRuns = simCount;
                 const bet = 100;
-                const BATCH_SIZE = 100;
+                const BATCH_SIZE = 200; // 提高批次量
 
                 const tempStats = {
                     runs: 0, totalBet: 0, totalWin: 0, maxWin: 0,
                     fgCount: 0, baseGameEmptyCount: 0, smashCount: 0, multCounts: {},
                     winDistribution: { "Zero": 0, "0-1x": 0, "1-10x": 0, "10-50x": 0, "50-100x": 0, "100x+": 0 }
-                };
-
-                // ... (模擬單局的核心邏輯 simulateRound 保持完全不變) ...
-                const simulateRound = (initialGrid, isFG, currentAccMult = 0) => {
-                    let grid = cloneGrid(initialGrid);
-                    let roundTotalWin = 0;
-                    let active = true;
-                    let loops = 0;
-                    let triggerFG = false;
-                    let retriggerFG = false;
-
-                    const smashRate = config.smashProbability !== undefined ? config.smashProbability : 0.3;
-                    const emptyRate = config.emptySpinProbability !== undefined ? config.emptySpinProbability : 0.2;
-                    let localAccMult = currentAccMult;
-
-                    while (active && loops < 20) {
-                        loops++;
-                        // 1. 砸球
-                        const shouldSmash = Math.random() < smashRate;
-                        const candidates = [];
-                        for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (grid[r][c] && grid[r][c].id <= 9) candidates.push({ r, c }); } }
-
-                        if (shouldSmash && candidates.length > 0) {
-                            tempStats.smashCount++;
-                            const t = candidates[Math.floor(Math.random() * candidates.length)];
-                            const multWeights = getMultWeightsFromConfig(config);
-                            const totalMW = multWeights.reduce((a, w) => a + w.weight, 0);
-                            let randomM = Math.random() * totalMW;
-                            let selectedVal = 2;
-                            for (let w of multWeights) { randomM -= w.weight; if (randomM <= 0) { selectedVal = w.val; break; } }
-                            tempStats.multCounts[selectedVal] = (tempStats.multCounts[selectedVal] || 0) + 1;
-                            grid[t.r][t.c] = { id: 88, type: 'mult', val: selectedVal, name: 'Multiplier', icon: '💎' };
-                        }
-
-                        // 2. 消除
-                        const counts = {};
-                        grid.flat().forEach(c => { if (c && c.type === 'normal') counts[c.id] = (counts[c.id] || 0) + 1; });
-                        const wins = Object.keys(counts).filter(id => counts[id] >= 8);
-                        const scatters = grid.flat().filter(c => c && c.id === 99).length;
-                        if (!isFG && scatters >= 4) triggerFG = true;
-                        if (isFG && scatters >= 3) retriggerFG = true;
-
-                        if (wins.length === 0) { active = false; break; }
-
-                        let batchWin = 0;
-                        wins.forEach(id => { batchWin += bet * getPayout(Number(id), counts[id]); });
-                        roundTotalWin += batchWin;
-
-                        const eliminatedSet = new Set();
-                        wins.forEach(targetId => {
-                            for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (grid[r][c] && String(grid[r][c].id) === String(targetId)) { eliminatedSet.add(`${r}-${c}`); } } }
-                        });
-
-                        // 3. 掉落
-                        const nextGrid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
-                        const isNextDropEmpty = Math.random() < emptyRate;
-                        let predictedScatterCount = 0; for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (currentGrid[r][c] && currentGrid[r][c].id === 99) predictedScatterCount++; } }
-                    
-                    // [修复] 掉落中奖逻辑升级：适应 8+ 消除规则
-                    let forceWinSymbol = null; 
-                    let forcedCountNeeded = 0; // 需要强制生成的数量
-                    
-                    if (!isNextDropEmpty) { 
-                        // 随机选一个普通符号 (ID 1-9) 作为中奖目标
-                        let s = getUniformSymbol(); 
-                        while (s.id > 9 || s.id === 88) { s = getUniformSymbol(); }
-                        forceWinSymbol = s; 
-                        forcedCountNeeded = 8; // 强制生成 8 个以保证消除
-                    }
-
-                    for (let c = 0; c < COLS; c++) {
-                        let colData = []; for (let r = 0; r < ROWS; r++) { if (currentGrid[r][c]) { colData.push({ ...currentGrid[r][c], isNew: false, oldRow: r }); } }
-                        let dropIndex = 0;
-                        while (colData.length < ROWS) {
-                            let sym; 
-                            // [关键修改] 如果需要中奖，优先填充目标符号，直到凑够 8 个
-                            if (!isNextDropEmpty && forcedCountNeeded > 0) { 
-                                sym = { ...forceWinSymbol }; 
-                                forcedCountNeeded--;
-                            }
-                            else {
-                                let safety = 0;
-                                    do {
-                                        // -----------------------------------------------------
-                                        // [核心修改] 模擬器同步：混合機率生成
-                                        // -----------------------------------------------------
-                                        const scatterProb = config.symbolWeights?.[99] !== undefined ? config.symbolWeights[99] : 2;
-                                        const isScatterRoll = (Math.random() * 100) < scatterProb;
-
-                                        if (isScatterRoll) {
-                                            sym = { ...SYMBOLS_DEF.find(s => s.id === 99) };
-                                        } else {
-                                            // 普通符號 ID 1-9 平均分佈
-                                            const normalSymbols = SYMBOLS_DEF.filter(s => s.id >= 1 && s.id <= 9);
-                                            const randIdx = Math.floor(Math.random() * normalSymbols.length);
-                                            sym = { ...normalSymbols[randIdx] };
-                                        }
-
-                                        // 過濾 ID 88
-                                        if (sym.id === 88) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
-
-                                        // 過濾 Scatter 硬上限
-                                        if (sym.id === 99 && predictedScatterCount >= 4) {
-                                            const normalSymbols = SYMBOLS_DEF.filter(s => s.id >= 1 && s.id <= 9);
-                                            const randIdx = Math.floor(Math.random() * normalSymbols.length);
-                                            sym = { ...normalSymbols[randIdx] };
-                                        }
-
-                                        // 防連線檢查
-                                        if (isNextDropEmpty && colData.length > 0) {
-                                            const lastSym = colData[0];
-                                            if (lastSym.id === sym.id) {
-                                                sym = null;
-                                            }
-                                        }
-                                        safety++;
-                                    } while (!sym && safety < 10);
-
-                                    if (!sym) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
-                                }
-
-                                if (sym.id === 99) predictedScatterCount++;
-                                colData.unshift(sym);
-                                dropIndex++;
-                            }
-                            for (let r = 0; r < ROWS; r++) nextGrid[r][c] = colData[r];
-                        }
-                        grid = nextGrid;
-                    }
-
-                    const mults = grid.flat().filter(c => c && c.id === 88);
-                    const totalMult = mults.reduce((a, b) => a + b.val, 0);
-                    let finalWin = 0;
-                    if (isFG) {
-                        if (roundTotalWin > 0) {
-                            localAccMult += totalMult;
-                            finalWin = roundTotalWin * (localAccMult > 0 ? localAccMult : 1);
-                        }
-                    } else {
-                        finalWin = roundTotalWin * (totalMult > 0 ? totalMult : 1);
-                    }
-                    return { win: finalWin, triggerFG, retriggerFG, newAccMult: localAccMult };
                 };
 
                 setTimeout(() => {
@@ -1270,35 +1377,38 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                             tempStats.runs++;
                             tempStats.totalBet += bet;
 
-                            const emptyRate = config.emptySpinProbability !== undefined ? config.emptySpinProbability : 0.2;
-                            const isForcedEmpty = Math.random() < emptyRate;
+                            // 1. [核心] 呼叫純運算引擎 (Base Game)
+                            const baseResult = calculateSpinResult(config, bet, false, 0);
+                            
+                            if (baseResult.smashCount > 0) tempStats.smashCount += baseResult.smashCount;
+                            baseResult.multsFound.forEach(m => { tempStats.multCounts[m] = (tempStats.multCounts[m] || 0) + 1; });
 
-                            let baseGrid;
-                            if (isForcedEmpty) {
-                                baseGrid = generateLosingGrid(config);
-                                tempStats.baseGameEmptyCount++;
-                            } else {
-                                baseGrid = generateWinningGrid(config);
-                            }
-
-                            const baseResult = simulateRound(baseGrid, false, 0);
                             let totalSpinWin = baseResult.win;
 
-                            if (baseResult.triggerFG) {
+                            // 2. 判斷是否觸發 FG
+                            if (baseResult.scatters >= 4) {
                                 tempStats.fgCount++;
                                 let spins = 15;
                                 let fgAccMult = 0;
+                                
                                 while (spins > 0) {
                                     spins--;
-                                    const isFgEmpty = Math.random() < emptyRate;
-                                    let fgGrid = isFgEmpty ? generateLosingGrid(config) : generateWinningGrid(config, true);
-                                    const fgResult = simulateRound(fgGrid, true, fgAccMult);
+                                    // [核心] 呼叫純運算引擎 (Free Game)
+                                    const fgResult = calculateSpinResult(config, bet, true, fgAccMult);
+                                    
                                     totalSpinWin += fgResult.win;
                                     fgAccMult = fgResult.newAccMult;
-                                    if (fgResult.retriggerFG) spins += 5;
+                                    
+                                    if (fgResult.scatters >= 3) spins += 5; // Retrigger
+                                    
+                                    if (fgResult.smashCount > 0) tempStats.smashCount += fgResult.smashCount;
+                                    fgResult.multsFound.forEach(m => { tempStats.multCounts[m] = (tempStats.multCounts[m] || 0) + 1; });
                                 }
+                            } else if (totalSpinWin === 0) {
+                                tempStats.baseGameEmptyCount++;
                             }
 
+                            // 3. 匯總
                             tempStats.totalWin += totalSpinWin;
                             if (totalSpinWin > tempStats.maxWin) tempStats.maxWin = totalSpinWin;
 
@@ -1310,12 +1420,13 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                             else if (x < 100) tempStats.winDistribution["50-100x"]++;
                             else tempStats.winDistribution["100x+"]++;
                         }
+                        
                         setProgress(Math.round((currentRun / totalRuns) * 100));
                         if (currentRun < totalRuns) { setTimeout(processBatch, 0); }
                         else { setStats(tempStats); setIsRunning(false); }
                     };
                     processBatch();
-                }, 100);
+                }, 50);
             };
 
             if (!isOpen) return null;
@@ -1418,7 +1529,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                     </div>
                 </div>
            );
-        }
+        }  
 
 // --- [修改] 玩家数据面板 (含详细 FG 统计) ---
         function PlayerStatsModal({ isOpen, onClose, history, globalStats }) {
