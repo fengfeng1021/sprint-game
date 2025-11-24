@@ -2477,7 +2477,19 @@ if (!freeGame.active) {
 
 <div ref={topBarRef} className="relative z-20 w-full max-w-[95vw] md:max-w-[800px] h-10 md:h-16 mb-1 bg-black/60 border border-[#fbbf24]/30 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-sm transition-all"><div className={`text-3xl md:text-5xl font-black tracking-widest transition-all duration-200 ${lasers.length > 0 ? 'text-white scale-125 drop-shadow-[0_0_10px_white]' : 'text-[#fbbf24] drop-shadow-md'}`}>{uiState.displayWinText}</div></div>
 
-{/* [优化] 限制竖屏高度(65vh)防止挡住底部栏；保持横屏防遮挡逻辑 */}
+                        {/* [新增] 手机竖屏左下角悬浮信息 (余额/赢分) */}
+                        <div className="absolute bottom-2 left-2 z-30 flex flex-col gap-1 landscape:hidden pointer-events-none">
+                            <div className="bg-black/60 backdrop-blur-sm border border-white/10 px-3 py-1 rounded-lg shadow-lg">
+                                <div className="text-[8px] text-gray-400 uppercase font-bold">BALANCE</div>
+                                <div className="text-sm font-mono font-bold text-white">${Math.floor(user.balance).toLocaleString()}</div>
+                            </div>
+                            <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 px-3 py-1 rounded-lg shadow-lg">
+                                <div className="text-[8px] text-yellow-500 uppercase font-bold">WIN</div>
+                                <div className="text-sm font-mono font-bold text-[#fbbf24]">${Math.floor(freeGame.active ? freeGame.totalWin : uiState.currentWin).toLocaleString()}</div>
+                            </div>
+                        </div>
+
+                        {/* [修復] 限制橫屏最大寬度，防止遮擋左右按鈕 (桌面端解除限制) */}
                         <div className="relative w-full max-w-[95vw] md:max-w-[800px] max-h-[65vh] landscape:max-h-none aspect-[4/3] landscape:w-auto landscape:h-[85%] landscape:aspect-[16/10] landscape:max-w-[65vw] lg:landscape:max-w-none z-20 transition-all duration-300">                            {showFGTrigger && (<div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-yellow-500 to-yellow-800 drop-shadow-[0_0_20px_rgba(255,215,0,0.8)] animate-bounce-drop font-cinzel tracking-tighter text-center leading-tight">FREE<br />GAMES</div></div>)}
                             
                             {freeGame.active && (<div className="absolute -right-2 -top-10 z-50 w-16 h-16 bg-[#2d1b0e] border-2 border-rose-500 rounded-xl flex flex-col items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.8)] animate-bounce-drop rotate-3"><div className="absolute -top-2 bg-rose-600 text-white text-[8px] font-bold px-2 rounded-full border border-rose-400">TOTAL</div><span className="text-2xl font-black text-white drop-shadow-md">{freeGame.accMult}x</span></div>)}
@@ -2571,7 +2583,7 @@ if (!freeGame.active) {
 
 {/* Portrait Bottom Controls */}
                     {/* [优化] 增加底部 padding 确保不贴底 */}
-                    <div className="shrink-0 bg-[#0c0a09] border-t border-[#fbbf24]/20 relative z-30 shadow-lg pb-6 landscape:hidden">
+                    <div className="shrink-0 bg-[#0c0a09]/80 backdrop-blur border-t border-[#fbbf24]/20 relative z-30 shadow-lg pb-6 pt-2 landscape:hidden">
                             <div className="flex flex-col items-center justify-between px-4 py-2 gap-2">
                             <div className="flex w-full justify-between gap-2"><div className="bg-[#1c1917] px-2 py-1 rounded border border-white/5 flex-1 text-center"><div className="text-[8px] text-gray-500 font-bold tracking-wider font-noto">餘額</div><div className="text-sm font-mono text-white">{Math.floor(user.balance).toLocaleString()}</div></div><div className="bg-[#1c1917] px-2 py-1 rounded border border-yellow-900/30 flex-1 text-center"><div className="text-[8px] text-yellow-600 font-bold tracking-wider font-noto">贏分</div><div className="text-sm font-mono text-[#fbbf24]">{Math.floor(freeGame.active ? freeGame.totalWin : uiState.currentWin)}</div></div></div>
                             <div className="flex w-full items-center justify-between gap-2">
