@@ -2642,6 +2642,7 @@ if (!freeGame.active) {
             const [tables, setTables] = useState([]);
             const [selectedId, setSelectedId] = useState(null);
             const [filter, setFilter] = useState('all'); // 'all' | 'empty'
+            const [isSidebarOpen, setSidebarOpen] = useState(false);
 
             useEffect(() => {
                 const unsub = onSnapshot(collection(db, 'apps', APP_ID, 'tables'), (snapshot) => {
@@ -2675,21 +2676,35 @@ if (!freeGame.active) {
             const last1 = fgHist.length > 0 ? fgHist[fgHist.length - 1] : '-';
             const last2 = fgHist.length > 1 ? fgHist[fgHist.length - 2] : '-';
 
-            return (
-                <div className="min-h-screen bg-[#0f0500] text-white font-noto flex flex-col animate-in fade-in relative">
-                    {/* Header */}
-                    <div className="h-16 bg-[#1c1917] border-b border-[#fbbf24]/30 flex items-center justify-between px-6 shrink-0 z-10 shadow-xl">
-                        <div className="flex items-center gap-6">
-                            <div className="flex items-center gap-2"><span className="text-2xl font-cinzel font-bold text-[#fbbf24]">SETH II</span><span className="bg-[#fbbf24]/20 text-[#fbbf24] px-2 py-0.5 rounded text-xs font-bold">LOBBY</span></div>
-                            
-                            {/* [新增] 桌台筛选按钮 */}
-                            <div className="flex bg-black/50 p-1 rounded-lg border border-white/10">
-                                <button onClick={() => setFilter('all')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${filter === 'all' ? 'bg-[#fbbf24] text-black' : 'text-gray-400 hover:text-white'}`}>全部桌台</button>
-                                <button onClick={() => setFilter('empty')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${filter === 'empty' ? 'bg-[#fbbf24] text-black' : 'text-gray-400 hover:text-white'}`}>空桌</button>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4"><div className="flex flex-col items-end mr-4"><span className="text-sm font-bold text-gray-300">{user.name}</span><span className="text-xs font-mono text-[#fbbf24]">${Math.floor(user.balance).toLocaleString()}</span></div><button onClick={onLogout} className="bg-white/5 hover:bg-white/10 p-2 rounded-full transition-colors text-gray-400 hover:text-white"><LogOut size={20} /></button></div>
+return (
+                <div className="h-screen bg-[#0f0500] text-white font-noto flex flex-col lg:flex-row overflow-hidden">
+                    
+                    {/* [新增] 移動端頂部欄 (Mobile Header) */}
+                    <div className="h-14 bg-[#1c1917] border-b border-white/10 flex items-center justify-between px-4 shrink-0 lg:hidden z-30 relative">
+                        <div className="flex items-center gap-2 text-[#fbbf24] font-cinzel font-bold text-lg"><Settings size={18}/> SETH ADMIN</div>
+                        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 text-white hover:bg-white/10 rounded">
+                            {isSidebarOpen ? <X size={20}/> : <Settings size={20}/>}
+                        </button>
                     </div>
+
+                    {/* Sidebar (Responsive) */}
+                    <div className={`
+                        fixed inset-y-0 left-0 w-64 bg-[#1c1917] border-r border-white/10 flex flex-col z-40 shadow-2xl transition-transform duration-300
+                        lg:static lg:transform-none
+                        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                    `}>
+                        <div className="h-16 hidden lg:flex items-center gap-2 px-6 border-b border-white/10 text-[#fbbf24] font-cinzel font-bold text-xl"><Settings className="text-[#fbbf24]" /> SETH ADMIN</div>
+                        <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scroll">
+                            <button onClick={() => { setActiveTab('monitor'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'monitor' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Activity size={18} /> 即時監控 (Live)</button>
+                            <button onClick={() => { setActiveTab('config'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'config' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><RotateCw size={18} /> 機率與桌台</button>
+                            <button onClick={() => { setActiveTab('users'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'users' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Users size={18} /> 玩家管理</button>
+                            <button onClick={() => { setActiveTab('data'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'data' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Database size={18} /> 數據維護</button>
+                        </nav>
+                        <div className="p-4 border-t border-white/10"><button onClick={onLogout} className="w-full flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors"><LogOut size={16} /> 登出系統</button></div>
+                    </div>
+
+                    {/* Main Content (Scrollable) */}
+                    <div className="flex-grow overflow-y-auto custom-scroll p-4 lg:p-8 bg-[#0a0a0a] relative" onClick={() => isSidebarOpen && setSidebarOpen(false)}>                    </div>
 
                     {/* Table Grid */}
                     <div className="flex-grow p-6 pb-48 overflow-y-auto custom-scroll">
@@ -2831,14 +2846,18 @@ if (!freeGame.active) {
                     </div>
 
                     {/* Sidebar (Responsive) */}
-                    {/* 手機端: 絕對定位+滑動效果; 桌面端: 固定顯示 */}
                     <div className={`
                         fixed inset-y-0 left-0 w-64 bg-[#1c1917] border-r border-white/10 flex flex-col z-40 shadow-2xl transition-transform duration-300
-                        lg:static lg:translate-x-0 
+                        lg:static lg:transform-none
                         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
                     `}>
                         <div className="h-16 hidden lg:flex items-center gap-2 px-6 border-b border-white/10 text-[#fbbf24] font-cinzel font-bold text-xl"><Settings className="text-[#fbbf24]" /> SETH ADMIN</div>
-                        <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scroll">                        </nav>
+                        <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scroll">
+                            <button onClick={() => { setActiveTab('monitor'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'monitor' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Activity size={18} /> 即時監控 (Live)</button>
+                            <button onClick={() => { setActiveTab('config'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'config' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><RotateCw size={18} /> 機率與桌台</button>
+                            <button onClick={() => { setActiveTab('users'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'users' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Users size={18} /> 玩家管理</button>
+                            <button onClick={() => { setActiveTab('data'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'data' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Database size={18} /> 數據維護</button>
+                        </nav>
                         <div className="p-4 border-t border-white/10"><button onClick={onLogout} className="w-full flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors"><LogOut size={16} /> 登出系統</button></div>
                     </div>
 
