@@ -2442,9 +2442,9 @@ if (!freeGame.active) {
                         {/* [新增] 背景呼吸光效层 */}
                         <div className="bg-breathing-light"></div>
 
-                       <img src="./images/man.png" alt="Character Left" className={`hidden landscape:block absolute left-0 lg:left-[2%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isManCasting ? 'animate-character-cast' : ''}`} />
-                        <img src="./images/woman.png" alt="Character Right" className={`hidden landscape:block absolute right-0 lg:right-[2%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isWomanCasting ? 'animate-character-cast' : ''}`} style={{ transform: 'translateY(-50%)' }} />
-                        {/* FG Info */}
+                       {/* [优化] 手机端人物向中间靠拢 (10%) */}
+                        <img src="./images/man.png" alt="Character Left" className={`hidden landscape:block absolute left-[10%] lg:left-[2%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isManCasting ? 'animate-character-cast' : ''}`} />
+                        <img src="./images/woman.png" alt="Character Right" className={`hidden landscape:block absolute right-[10%] lg:right-[4%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isWomanCasting ? 'animate-character-cast' : ''}`} style={{ transform: 'translateY(-50%)' }} />                        {/* FG Info */}
                         {freeGame.active && (
                             <div className="absolute left-24 top-1/2 -translate-y-1/2 z-40 hidden lg:block animate-bounce-drop pointer-events-none">
                                 <div className="flex flex-col items-center justify-center">
@@ -2459,7 +2459,8 @@ if (!freeGame.active) {
                         {!freeGame.active && !isSpinning && (<div className="absolute left-2 top-2 z-30 lg:hidden landscape:hidden"><button onClick={() => { playSound('click'); setShowBuyModal(true); }} className="bg-[#b45309] border border-[#fbbf24] text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1"><ShoppingCart size={12} /> BUY</button></div>)}
 {!freeGame.active && (<div className="hidden landscape:block absolute left-4 z-30"><button onClick={() => { playSound('click'); setShowBuyModal(true); }} disabled={isSpinning} className="flex flex-col items-center justify-center w-16 h-16 bg-gradient-to-b from-[#b45309] to-[#451a03] border-2 border-[#fbbf24] rounded-xl shadow-lg hover:scale-105 active:scale-95 transition-all group"><div className="text-sm text-[#fde047] font-black drop-shadow-md -mt-3 mb-1">BUY</div><ShoppingCart className="text-white w-6 h-6 group-hover:text-[#fbbf24] transition-colors" /></button></div>)}
                         {/* Spin Controls */}
-                        <div className="hidden landscape:flex flex-col gap-3 absolute right-4 top-1/2 -translate-y-1/2 z-50 items-center">
+                        {/* [优化] 手机横屏缩放按钮组，防止遮挡右上角退出键 */}
+                        <div className="hidden landscape:flex flex-col gap-3 absolute right-4 top-1/2 -translate-y-1/2 z-50 items-center landscape:scale-75 landscape:origin-right lg:landscape:scale-100">
                             <button onClick={() => setAutoSpin(!autoSpin)} className={`w-10 h-10 rounded-full border flex items-center justify-center shadow-lg bg-black/60 backdrop-blur ${autoSpin ? 'border-emerald-500 text-emerald-400' : 'border-white/20 text-gray-400'}`}><RotateCw size={16} className={autoSpin ? 'animate-spin-btn' : ''} /></button>
                             <div className="relative flex flex-col items-center bg-black/80 rounded-2xl border border-white/20 p-1 gap-1 backdrop-blur-md shadow-lg"><button disabled={isSpinning} onClick={(e) => { e.stopPropagation(); adjustBetSmart(1); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-white active:scale-90 transition-transform"><Plus size={14} /></button><div className="text-[#fbbf24] font-bold font-mono text-xs py-1 select-none min-w-[24px] text-center">{bet}</div><button disabled={isSpinning} onClick={(e) => { e.stopPropagation(); adjustBetSmart(-1); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-white active:scale-90 transition-transform"><Minus size={14} /></button></div>
                             {!isSpectating ? (
@@ -2476,9 +2477,8 @@ if (!freeGame.active) {
 
 <div ref={topBarRef} className="relative z-20 w-full max-w-[95vw] md:max-w-[800px] h-10 md:h-16 mb-1 bg-black/60 border border-[#fbbf24]/30 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-sm transition-all"><div className={`text-3xl md:text-5xl font-black tracking-widest transition-all duration-200 ${lasers.length > 0 ? 'text-white scale-125 drop-shadow-[0_0_10px_white]' : 'text-[#fbbf24] drop-shadow-md'}`}>{uiState.displayWinText}</div></div>
 
-                       {/* [修復] 限制橫屏最大寬度，防止遮擋左右按鈕 (桌面端解除限制) */}
-                        <div className="relative w-full max-w-[95vw] md:max-w-[800px] aspect-[4/3] landscape:w-auto landscape:h-[85%] landscape:aspect-[16/10] landscape:max-w-[65vw] lg:landscape:max-w-none z-20 transition-all duration-300">
-                            {showFGTrigger && (<div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-yellow-500 to-yellow-800 drop-shadow-[0_0_20px_rgba(255,215,0,0.8)] animate-bounce-drop font-cinzel tracking-tighter text-center leading-tight">FREE<br />GAMES</div></div>)}
+{/* [优化] 限制竖屏高度(65vh)防止挡住底部栏；保持横屏防遮挡逻辑 */}
+                        <div className="relative w-full max-w-[95vw] md:max-w-[800px] max-h-[65vh] landscape:max-h-none aspect-[4/3] landscape:w-auto landscape:h-[85%] landscape:aspect-[16/10] landscape:max-w-[65vw] lg:landscape:max-w-none z-20 transition-all duration-300">                            {showFGTrigger && (<div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-yellow-500 to-yellow-800 drop-shadow-[0_0_20px_rgba(255,215,0,0.8)] animate-bounce-drop font-cinzel tracking-tighter text-center leading-tight">FREE<br />GAMES</div></div>)}
                             
                             {freeGame.active && (<div className="absolute -right-2 -top-10 z-50 w-16 h-16 bg-[#2d1b0e] border-2 border-rose-500 rounded-xl flex flex-col items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.8)] animate-bounce-drop rotate-3"><div className="absolute -top-2 bg-rose-600 text-white text-[8px] font-bold px-2 rounded-full border border-rose-400">TOTAL</div><span className="text-2xl font-black text-white drop-shadow-md">{freeGame.accMult}x</span></div>)}
 
@@ -2569,9 +2569,10 @@ if (!freeGame.active) {
                         <div className="flex items-center gap-4 absolute right-8 opacity-90"><span className="text-gray-400 font-bold text-sm">贏分</span><span className="text-3xl font-black text-[#fbbf24] font-mono">{Math.floor(freeGame.active ? freeGame.totalWin : uiState.currentWin)}</span></div>
                     </div>
 
-                    {/* Portrait Bottom Controls */}
-                    <div className="shrink-0 bg-[#0c0a09] border-t border-[#fbbf24]/20 relative z-30 shadow-lg pb-safe landscape:hidden">
-                        <div className="flex flex-col items-center justify-between px-4 py-2 gap-2">
+{/* Portrait Bottom Controls */}
+                    {/* [优化] 增加底部 padding 确保不贴底 */}
+                    <div className="shrink-0 bg-[#0c0a09] border-t border-[#fbbf24]/20 relative z-30 shadow-lg pb-6 landscape:hidden">
+                            <div className="flex flex-col items-center justify-between px-4 py-2 gap-2">
                             <div className="flex w-full justify-between gap-2"><div className="bg-[#1c1917] px-2 py-1 rounded border border-white/5 flex-1 text-center"><div className="text-[8px] text-gray-500 font-bold tracking-wider font-noto">餘額</div><div className="text-sm font-mono text-white">{Math.floor(user.balance).toLocaleString()}</div></div><div className="bg-[#1c1917] px-2 py-1 rounded border border-yellow-900/30 flex-1 text-center"><div className="text-[8px] text-yellow-600 font-bold tracking-wider font-noto">贏分</div><div className="text-sm font-mono text-[#fbbf24]">{Math.floor(freeGame.active ? freeGame.totalWin : uiState.currentWin)}</div></div></div>
                             <div className="flex w-full items-center justify-between gap-2">
                                 <button onClick={() => setAutoSpin(!autoSpin)} className={`w-10 h-10 rounded-full border flex items-center justify-center ${autoSpin ? 'bg-emerald-900/50 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}><RotateCw size={16} className={autoSpin ? 'animate-spin-btn' : ''} /></button>
