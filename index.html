@@ -30,6 +30,12 @@
             overflow: hidden;
             background-color: #000;
             color: white;
+            /* [优化] 移动端核心：禁止双击缩放，消除点击延迟，提升手感 */
+            touch-action: manipulation; 
+            /* [优化] 禁止 iOS 长按弹出菜单 */
+            -webkit-touch-callout: none;
+            /* [优化] 禁止移动端下拉刷新/橡皮筋效果，保持APP体验 */
+            overscroll-behavior: none;
         }
 
         .font-cinzel {
@@ -97,8 +103,8 @@
             }
         }
 
-        .animate-heavy-drop {
-            animation: fallingDown 0.5s ease-out both;
+.animate-heavy-drop {
+            animation: fallingDown calc(0.5s / var(--speed-factor, 1)) ease-out both;
         }
 
         /* 2. 幸存者短距离滑落 (舊圖案) */
@@ -113,7 +119,7 @@
         }
 
         .animate-survivor-drop {
-            animation: survivorDrop 0.4s cubic-bezier(0.25, 1, 0.5, 1) both;
+            animation: survivorDrop calc(0.4s / var(--speed-factor, 1)) cubic-bezier(0.25, 1, 0.5, 1) both;
         }
 
         /* ------------------------------------------------
@@ -219,9 +225,9 @@
             }
         }
 
-        .animate-eliminate-shake {
-            /* [總時長] 2秒 */
-            animation: borderGlowEffect 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+.animate-eliminate-shake {
+            /* [總時長] 2秒 -> 动态倍速 */
+            animation: borderGlowEffect calc(2s / var(--speed-factor, 1)) cubic-bezier(0.4, 0, 0.2, 1) forwards;
             border-width: 4px;
             border-style: solid;
             box-sizing: border-box;
@@ -229,8 +235,8 @@
 
         .animate-eliminate-shake img,
         .animate-eliminate-shake>div {
-            /* [總時長] 2秒 (必須同步) */
-            animation: symbolRotateScale 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+            /* [總時長] 2秒 (必須同步) -> 动态倍速 */
+            animation: symbolRotateScale calc(2s / var(--speed-factor, 1)) cubic-bezier(0.4, 0, 0.2, 1) forwards;
             will-change: transform, filter, opacity;
         }
 
@@ -255,10 +261,9 @@
         }
 
         .animate-character-cast {
-            animation: characterCastAction 0.8s ease-out forwards;
+            animation: characterCastAction calc(0.8s / var(--speed-factor, 1)) ease-out forwards;
             z-index: 20 !important;
         }
-
         /* ------------------------------------------------
        D. 閃電與衝擊波 (Lightning & Impact)
        ------------------------------------------------ */
@@ -313,7 +318,7 @@
             }
         }
 
-        /* 閃電光束容器 */
+/* 閃電光束容器 */
         .lightning-bolt-container {
             position: absolute;
             top: -100%;
@@ -325,7 +330,7 @@
             background: linear-gradient(to bottom, transparent 0%, rgba(0, 68, 170, 0.8) 70%, #00eaff 90%, #ffffff 100%);
             filter: drop-shadow(0 0 10px #00eaff) blur(3px) brightness(2.5);
             border-radius: 0 0 100px 100px;
-            animation: fallingLightningBolt 0.8s ease-out forwards;
+            animation: fallingLightningBolt calc(0.8s / var(--speed-factor, 1)) ease-out forwards;
         }
 
         /* 衝擊波容器 */
@@ -336,7 +341,7 @@
             pointer-events: none;
             border-radius: 50%;
             filter: blur(3px);
-            animation: impactShockwave 0.8s ease-out forwards;
+            animation: impactShockwave calc(0.8s / var(--speed-factor, 1)) ease-out forwards;
         }
 
         /* ------------------------------------------------
@@ -410,7 +415,7 @@
 
         /* Animation Classes */
         .animate-group-win {
-            animation: floatGroupWin 1.5s ease-out forwards;
+            animation: floatGroupWin calc(1.5s / var(--speed-factor, 1)) ease-out forwards;
         }
 
         .animate-win-pulse {
@@ -422,8 +427,9 @@
             animation: spinButtonPulse 2s infinite;
         }
 
+        /* [优化] 倍速球变身动画加速 */
         .animate-magic-appear {
-            animation: magicHit 0.5s ease-out forwards;
+            animation: magicHit calc(0.5s / var(--speed-factor, 1)) ease-out forwards;
         }
 
         .coin-particle {
@@ -476,7 +482,7 @@
 
         import {
             User, Lock, LogIn, Users, Settings, Play, Plus, Minus,
-            RotateCw, Zap, X, Save, LogOut, Terminal, ChevronsRight,
+            RotateCw, Zap, X, Save, LogOut, Terminal, ChevronsRight, Smartphone,
             Trophy, Flame, Trash2, PlusCircle, RefreshCw, Database,
             Activity, BarChart2, Hash, Cpu, Cloud, Loader2, AlertTriangle, Copy,
             ShoppingCart, Coins, Volume2, VolumeX
@@ -485,8 +491,7 @@
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
+import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         // ---------------------------------------------------------
         // CONFIGURATION
@@ -1312,6 +1317,66 @@
                         )}
                     </div>
                 </div>
+           );
+        }
+
+// --- [新增] 玩家数据面板 (真实数据版) ---
+        function PlayerStatsModal({ isOpen, onClose, history, globalStats, todayStats }) {
+            if (!isOpen) return null;
+            
+            // 计算 RTP
+            const calcRTP = (win, bet) => bet > 0 ? ((win / bet) * 100).toFixed(2) : "0.00";
+            const todayRTP = calcRTP(todayStats.win, todayStats.bet);
+            const lifetimeRTP = calcRTP(globalStats.win, globalStats.bet);
+
+            return (
+                <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-noto animate-in fade-in" onClick={onClose}>
+                    <div className="bg-[#1c1917] border border-[#fbbf24] w-full max-w-lg rounded-xl p-6 relative shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
+                        <h2 className="text-xl font-bold text-[#fbbf24] mb-6 flex items-center gap-2"><BarChart2 /> 數據中心 (Real-Time)</h2>
+                        
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                            {/* 今日 RTP */}
+                            <div className="bg-black/40 p-3 rounded border border-white/10 text-center">
+                                <div className="text-xs text-gray-500 uppercase font-bold mb-1">今日 RTP (Today)</div>
+                                <div className={`text-3xl font-mono font-black ${Number(todayRTP) >= 100 ? 'text-rose-500' : 'text-emerald-400'}`}>{todayRTP}%</div>
+                                <div className="text-[10px] text-gray-500 mt-1">
+                                    Win: <span className="text-white">{todayStats.win.toFixed(0)}</span> / Bet: <span className="text-white">{todayStats.bet}</span>
+                                </div>
+                            </div>
+                            
+                            {/* 历史/30日 RTP (全桌累计) */}
+                            <div className="bg-black/40 p-3 rounded border border-white/10 text-center">
+                                <div className="text-xs text-gray-500 uppercase font-bold mb-1">历史累计 RTP (Global)</div>
+                                <div className={`text-3xl font-mono font-black ${Number(lifetimeRTP) >= 100 ? 'text-rose-500' : 'text-blue-400'}`}>{lifetimeRTP}%</div>
+                                <div className="text-[10px] text-gray-500 mt-1">
+                                    Total Win: <span className="text-white">{(globalStats.win / 10000).toFixed(1)}w</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><ChevronsRight size={16} /> 最近投注 (Last 10)</h3>
+                        <div className="bg-black/40 rounded border border-white/10 overflow-hidden h-[240px] overflow-y-auto custom-scroll">
+                            <table className="w-full text-xs text-left">
+                                <thead className="text-gray-400 sticky top-0 bg-[#2d2a26] z-10 shadow-md">
+                                    <tr><th className="p-2">Time</th><th className="p-2">Bet</th><th className="p-2">Win</th><th className="p-2">Mult</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {(!history || history.length === 0) ? 
+                                        <tr><td colSpan="4" className="p-8 text-center text-gray-500 italic">暂无游戏记录...</td></tr> : 
+                                        history.map((h, i) => (
+                                        <tr key={i} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-2 text-gray-400 font-mono text-[10px]">{h.time}</td>
+                                            <td className="p-2 font-bold text-gray-300">{h.bet}</td>
+                                            <td className={`p-2 font-bold font-mono ${h.win > 0 ? 'text-[#fbbf24]' : 'text-gray-600'}`}>{h.win > 0 ? h.win.toFixed(1) : '-'}</td>
+                                            <td className={`p-2 font-mono ${h.mult > 1 ? 'text-purple-400' : 'text-gray-600'}`}>{h.mult > 0 ? h.mult + 'x' : '-'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             );
         }
         // --- [修改] 火球組件：修正飛行終點偏移問題 ---
@@ -1426,10 +1491,79 @@
 
             // --- [6. 音量控制状态 (关键修复点)] ---
             const [showVolumePanel, setShowVolumePanel] = useState(false);
-            const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
+const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
             const [sfxVolume, setSfxVolume] = useState(0.6); // 音效音量
             const bgmRef = useRef(null);
 
+            // [Speed Control]
+            const [showSpeedPanel, setShowSpeedPanel] = useState(false);
+            const [gameSpeed, setGameSpeed] = useState(1);
+
+            // [Data: Real Stats] 
+            const [showStatsModal, setShowStatsModal] = useState(false);
+            const [globalStats, setGlobalStats] = useState({ bet: 0, win: 0 });
+            const [todayStats, setTodayStats] = useState({ bet: 0, win: 0 });
+            const [playHistory, setPlayHistory] = useState(user.history || []); // 从用户数据初始化
+
+            // [Listener] 监听全局与今日数据
+            useEffect(() => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                
+                // 1. 监听全局历史 (Lifetime)
+                const unsubGlobal = onSnapshot(doc(db, 'apps', APP_ID, 'stats', 'global'), (doc) => {
+                    if (doc.exists()) setGlobalStats(doc.data());
+                    else setDoc(doc.ref, { bet: 0, win: 0 });
+                });
+
+                // 2. 监听今日数据 (Today)
+                const unsubToday = onSnapshot(doc(db, 'apps', APP_ID, 'stats', todayStr), (doc) => {
+                    if (doc.exists()) setTodayStats(doc.data());
+                    else setDoc(doc.ref, { bet: 0, win: 0 });
+                });
+
+                // 3. 监听当前用户历史记录 (Real-time update)
+                const unsubUser = onSnapshot(doc(db, 'apps', APP_ID, COL_USERS, user.id), (doc) => {
+                    if (doc.exists() && doc.data().history) {
+                        setPlayHistory(doc.data().history);
+                    }
+                });
+
+                return () => { unsubGlobal(); unsubToday(); unsubUser(); };
+            }, []);
+
+            // [Helper] 上传游戏数据到数据库
+            const saveGameStats = async (betAmount, winAmount, finalMult) => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const statsRefGlobal = doc(db, 'apps', APP_ID, 'stats', 'global');
+                const statsRefToday = doc(db, 'apps', APP_ID, 'stats', todayStr);
+                const userRef = doc(db, 'apps', APP_ID, COL_USERS, user.id);
+
+                const newRecord = {
+                    time: new Date().toLocaleTimeString('zh-TW', { hour12: false }),
+                    bet: betAmount,
+                    win: winAmount,
+                    mult: finalMult
+                };
+
+                try {
+                    // 原子更新统计数据 (Increment)
+                    updateDoc(statsRefGlobal, { bet: increment(betAmount), win: increment(winAmount) }).catch(() => setDoc(statsRefGlobal, { bet: betAmount, win: winAmount }));
+                    updateDoc(statsRefToday, { bet: increment(betAmount), win: increment(winAmount) }).catch(() => setDoc(statsRefToday, { bet: betAmount, win: winAmount }));
+                    
+                    // 更新个人历史记录 (手动维护数组长度)
+                    const userDoc = await getDoc(userRef);
+                    let currentHistory = [];
+                    if (userDoc.exists() && userDoc.data().history) {
+                        currentHistory = userDoc.data().history;
+                    }
+                    const updatedHistory = [newRecord, ...currentHistory].slice(0, 10); // 只保留最近10条
+                    
+                    updateDoc(userRef, { history: updatedHistory });
+                    
+                } catch (e) {
+                    console.error("Stats Save Error", e);
+                }
+            };
             // --- [7. Refs] ---
             const mounted = useRef(true);
             const autoSpinRef = useRef(false);
@@ -1453,13 +1587,15 @@
             useEffect(() => {
                 if (freeGame.active && !isSpinning) {
                     if (freeGame.spinsLeft > 0) {
-                        const timer = setTimeout(() => { if (mounted.current) startSpin(); }, 800);
+                        // [优化] FG 间隔加速
+                        const timer = setTimeout(() => { if (mounted.current) startSpin(); }, 800 / gameSpeed);
                         return () => clearTimeout(timer);
                     } else {
-                        setTimeout(() => endFreeGame(), 1000);
+                        // [优化] FG 结束延迟加速
+                        setTimeout(() => endFreeGame(), 1000 / gameSpeed);
                     }
                 }
-            }, [freeGame.active, freeGame.spinsLeft, isSpinning]);
+            }, [freeGame.active, freeGame.spinsLeft, isSpinning, gameSpeed]);
 
             // --- [9. 音频控制逻辑] ---
 
@@ -1533,7 +1669,7 @@
                 }
             }, [sfxVolume]);
 
-            // 键盘事件
+// 键盘事件
             useEffect(() => {
                 const handleKeyDown = (e) => {
                     if (e.code === 'Space') {
@@ -1545,8 +1681,7 @@
                 };
                 window.addEventListener('keydown', handleKeyDown);
                 return () => window.removeEventListener('keydown', handleKeyDown);
-            }, [isSpinning, showBuyModal, showSimModal, isAdminOpen, freeGame.active]);
-
+            }, [isSpinning, showBuyModal, showSimModal, isAdminOpen, freeGame.active, bet, gameSpeed]);
             // --- [10. 辅助函数] ---
             const getStep = (currentBet) => {
                 if (currentBet < 10) return 1;
@@ -1578,13 +1713,12 @@
                 setLogs(prev => [{ time: timestamp, msg, type }, ...prev].slice(0, 50));
             };
 
-            const smartWait = (ms, isFastMode = false) => {
+const smartWait = (ms, isFastMode = false) => {
                 return new Promise(resolve => {
                     const finalMs = isFastMode ? ms * 0.5 : ms;
-                    setTimeout(resolve, finalMs);
+                    setTimeout(resolve, finalMs / gameSpeed); // 应用倍速
                 });
             };
-
             const checkIsBoring = (gridToCheck) => {
                 if (gridToCheck.flat().some(c => c.id === 88)) return false;
                 const scatterCount = gridToCheck.flat().filter(c => c.id === 99).length;
@@ -1618,11 +1752,14 @@
                     setGrid(Array(ROWS).fill(null).map(() => Array(COLS).fill(null)));
 
                     let currentBalance = user.balance;
-                    if (!freeGame.active) { currentBalance -= cost; onUpdateBalance(currentBalance); }
-                    else { setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft - 1 })); }
-
+if (!freeGame.active) { 
+                        currentBalance -= cost; 
+                        onUpdateBalance(currentBalance); 
+                    } else { 
+                        setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft - 1 })); 
+                    }
                     playSound('spin');
-                    await new Promise(r => setTimeout(r, 50));
+                    await new Promise(r => setTimeout(r, 50 / gameSpeed));
 
                     const activeCfg = configRef.current;
                     let rawGrid;
@@ -1645,7 +1782,8 @@
                     }
 
                     const isBoring = checkIsBoring(rawGrid);
-                    setIsFastDrop(isBoring);
+                    // [整合] 移除快/慢模式区别，统一使用标准流畅动画
+                    setIsFastDrop(false);
 
                     // --- 砸球判定 (同步逻辑) ---
                     const smashRate = activeCfg.smashProbability !== undefined ? activeCfg.smashProbability : 0.3;
@@ -1671,6 +1809,11 @@
                             candidates.splice(randIdx, 1);
                         }
 
+                        // [优化] 动态计算延迟，除以 gameSpeed
+                        const delayStrike = 250 / gameSpeed;
+                        const delayReveal = 650 / gameSpeed;
+                        const delayClear = 1050 / gameSpeed;
+
                         setTimeout(() => {
                             const newStrikes = new Set();
                             targetCoords.forEach(t => newStrikes.add(`${t.r}-${t.c}`));
@@ -1682,7 +1825,7 @@
                             if (hasRight) { playSound('woman'); setIsWomanCasting(true); }
 
                             if (user.role === 'admin') addLog(`⚡ 初始掉落: 触发同步砸球`, 'warning');
-                        }, 250);
+                        }, delayStrike);
 
                         const multWeights = getMultWeightsFromConfig(activeCfg);
                         const totalMW = multWeights.reduce((a, w) => a + w.weight, 0);
@@ -1702,24 +1845,25 @@
                         gridForLogic = smashedGrid;
 
                         // 闪电覆盖时偷换数据
-                        setTimeout(() => { setGrid(smashedGrid); }, 650);
+                        setTimeout(() => { setGrid(smashedGrid); }, delayReveal);
 
                         // 清除闪电
                         setTimeout(() => {
                             setLightningStrikes(new Set());
                             setIsManCasting(false); setIsWomanCasting(false);
-                        }, 1050);
+                        }, delayClear);
 
                         smashHappened = true;
                     }
 
-                    const dropWaitTime = isBoring ? 600 : 1100;
-                    const totalWait = smashHappened ? Math.max(dropWaitTime, 1100) : dropWaitTime;
+                    // [整合] 统一基础等待时间为 800ms，不再区分无聊/中奖
+                    const baseWait = 800;
+                    const totalWait = smashHappened ? Math.max(baseWait, 1100) : baseWait;
 
-                    await new Promise(r => setTimeout(r, totalWait));
+                    // [优化] 核心等待时间随倍速缩短
+                    await new Promise(r => setTimeout(r, totalWait / gameSpeed));
 
-                    await processVisualLogic(gridForLogic, activeCfg, currentBalance, isEmptyGame, smashHappened);
-
+                    await processVisualLogic(gridForLogic, activeCfg, currentBalance, isEmptyGame, smashHappened, cost);
                 } catch (error) {
                     console.error("SPIN ERROR:", error);
                     setIsSpinning(false); setAutoSpin(false); addLog("游戏发生错误: " + error.message, "error");
@@ -1729,7 +1873,7 @@
             // ---------------------------------------------------------
             // 核心逻辑 2: 消除与掉落循环
             // ---------------------------------------------------------
-            const processVisualLogic = async (initialGrid, activeCfg, startBalance, isEmptyGame, skipFirstSmash = false) => {
+           const processVisualLogic = async (initialGrid, activeCfg, startBalance, isEmptyGame, skipFirstSmash = false, currentCost = 0) => {
                 let currentGrid = JSON.parse(JSON.stringify(initialGrid));
                 let keepPlaying = true; let roundWin = 0; let loop = 0; let runningBalance = startBalance;
 
@@ -1876,14 +2020,16 @@
                     }
 
                     const isBoring = checkIsBoring(nextGrid);
-                    setIsFastDrop(isBoring);
+                    // [整合] 统一动画模式
+                    setIsFastDrop(false);
 
                     playSound('drop');
                     currentGrid = nextGrid;
                     setGrid(currentGrid);
                     setFloatingTexts([]);
 
-                    await smartWait(isBoring ? 600 : 1100, isEmptyGame);
+                    // [整合] 统一掉落后等待时间 (800ms)
+                    await smartWait(800, isEmptyGame);
                 }
 
                 // 4. 结算
@@ -1951,24 +2097,45 @@
                     playSound('bigwin'); await smartWait(1000, false);
                 }
 
-                setIsSpinning(false);
-            };
+// [DB Save] 保存真实数据到数据库
+                if (currentCost > 0) {
+                    saveGameStats(currentCost, finalWin, finalMult);
+                }
+
+                setIsSpinning(false);            };
 
             const endFreeGame = () => {
                 setFreeGame(prev => ({ ...prev, active: false }));
                 setIsSpinning(false); setAutoSpin(false); alert(`免费游戏结束！总分: ${Math.floor(freeGame.totalWin)}`);
             };
 
-            // ---------------------------------------------------------
+// ---------------------------------------------------------
             // Render UI
             // ---------------------------------------------------------
             return (
-                <div className="fixed inset-0 w-full h-[100dvh] bg-black font-roboto select-none flex flex-col landscape:flex-row overflow-hidden text-white">
+                <div 
+                    className="fixed inset-0 w-full h-[100dvh] bg-black font-roboto select-none flex flex-col landscape:flex-row overflow-hidden text-white"
+                    style={{ '--speed-factor': gameSpeed }}
+                >
+                    {/* [新增] 竖屏旋转提示遮罩 (仅竖屏显示) */}
+                    <div className="fixed inset-0 z-[9999] bg-[#0f0500] flex flex-col items-center justify-center landscape:hidden font-noto text-center p-8 animate-in fade-in duration-500">
+                        <div className="relative mb-8">
+                            <Smartphone size={80} className="text-gray-700" />
+                            <RotateCw size={40} className="text-[#fbbf24] absolute -right-2 -bottom-2 animate-spin duration-[3s]" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-[#fbbf24] mb-3 font-cinzel">PLEASE ROTATE</h2>
+                        <p className="text-gray-400 text-sm tracking-widest uppercase">为了获得最佳体验<br/>请旋转您的设备至横屏模式</p>
+                    </div>
 
                     {betMenuOpen && <div className="fixed inset-0 z-[60]" onClick={() => setBetMenuOpen(null)}></div>}
-
-                    {/* Modals */}
-                    <SimulatorModal isOpen={showSimModal} onClose={() => setShowSimModal(false)} config={configRef.current} />
+{/* Modals */}
+                    <PlayerStatsModal 
+                        isOpen={showStatsModal} 
+                        onClose={() => setShowStatsModal(false)} 
+                        history={playHistory} 
+                        globalStats={globalStats}
+                        todayStats={todayStats}
+                    />                    <SimulatorModal isOpen={showSimModal} onClose={() => setShowSimModal(false)} config={configRef.current} />
                     <BuyBonusModal
                         isOpen={showBuyModal}
                         onClose={() => setShowBuyModal(false)}
@@ -2019,8 +2186,41 @@
                             )}
                         </div>
 
-                        {user.role === 'admin' && (
-                            <button onClick={() => setIsAdminOpen(!isAdminOpen)} className="bg-black/50 text-[#fbbf24] p-2 rounded-full border border-[#fbbf24]/30">
+<button onClick={() => setShowStatsModal(!showStatsModal)} className="bg-black/50 text-blue-400 p-2 rounded-full border border-blue-500/30">
+                            <BarChart2 size={14} />
+                        </button>
+
+                        {/* Speed Control Button */}
+                        <div className="relative flex flex-col items-end">
+                            <button
+                                onClick={() => setShowSpeedPanel(!showSpeedPanel)}
+                                className={`p-2 rounded-full border transition-colors ${gameSpeed > 1 ? 'bg-yellow-900/50 border-yellow-500 text-yellow-400' : 'bg-black/50 border-gray-500 text-gray-400'}`}
+                            >
+                                <ChevronsRight size={14} />
+                                {gameSpeed > 1 && <span className="absolute -bottom-1 -right-1 bg-yellow-500 text-black text-[8px] font-bold px-1 rounded-full">{gameSpeed}x</span>}
+                            </button>
+                            {showSpeedPanel && (
+                                <div className="absolute top-10 right-0 bg-[#1c1917] border border-[#fbbf24]/30 p-4 rounded-xl shadow-2xl flex flex-col gap-4 w-48 animate-in fade-in slide-in-from-top-2 z-[60]">
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between text-xs text-[#fbbf24] font-bold">
+                                            <span>Speed</span>
+                                            <span>{gameSpeed}x</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="1" max="10" step="1" 
+                                            value={gameSpeed} 
+                                            onChange={(e) => setGameSpeed(Number(e.target.value))} 
+                                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#fbbf24]" 
+                                        />
+                                        <div className="flex justify-between text-[10px] text-gray-500 font-mono">
+                                            <span>1x</span><span>5x</span><span>10x</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {user.role === 'admin' && (                            <button onClick={() => setIsAdminOpen(!isAdminOpen)} className="bg-black/50 text-[#fbbf24] p-2 rounded-full border border-[#fbbf24]/30">
                                 <Settings size={14} />
                             </button>
                         )}
@@ -2090,11 +2290,13 @@
                                                     data-symbol-id={cell.id}
                                                     style={{
                                                         zIndex: isEliminating ? 100 : (isSpecialScatter ? 90 : 10),
+                                                        // [优化] 掉落延迟随倍速缩短，保持流畅感 (微调标准参数 0.1s -> 0.08s 以适应统一节奏)
                                                         animationDelay: (cell.isNew && isSpinning)
-                                                            ? (isFastDrop ? `${c * 0.06}s` : `${c * 0.1}s`)
+                                                            ? (isFastDrop ? `${(c * 0.06) / gameSpeed}s` : `${(c * 0.08) / gameSpeed}s`)
                                                             : '0s',
-                                                        animationDuration: isFastDrop ? '0.25s' : undefined,
-                                                        transition: isFastDrop ? 'all 0.25s ease-out' : 'all 0.2s'
+                                                        // [优化] 强制覆盖动画时长 (适配倍速)
+                                                        animationDuration: isFastDrop ? `calc(0.25s / ${gameSpeed})` : undefined,
+                                                        transition: isFastDrop ? `all calc(0.25s / ${gameSpeed}) ease-out` : `all calc(0.2s / ${gameSpeed})`
                                                     }}
                                                     className={`
                                                     relative flex items-center justify-center 
