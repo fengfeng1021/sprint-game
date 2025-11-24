@@ -660,67 +660,79 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                 99: 2
             },
 
-            // [新版] 倍数层级权重 (简化控制)
-            // T1 (普通): 1-5倍
-            // T2 (稀有): 6-10倍
-            // T3 (史诗): 15-50倍
-            // T4 (传说): 60-100倍
-            // T5 (神话): 150-500倍
+            // [新版] 倍数层级权重 (七级精细控制)
+            // T1 (最低): 1-5倍
+            // T2 (低): 6-10倍
+            // T3 (中): 15-30倍
+            // T4 (中高): 35-50倍
+            // T5 (高): 60-100倍
+            // T6 (傳說): 150-300倍
+            // T7 (神話): 350-500倍
             multiplierTierWeights: {
-                tier1: 60, // 60% 几率出 T1
-                tier2: 25, // 25% 几率出 T2
-                tier3: 10, // 10% 几率出 T3
-                tier4: 4,  // 4% 几率出 T4
-                tier5: 1   // 1% 几率出 T5
+                tier1: 62,  // 1-5x 佔總體 50%
+                tier2: 18,  // 6-10x 佔總體 20%
+                tier3: 10,  // 15-30x 佔總體 12%
+                tier4: 5,   // 35-50x 佔總體 8%
+                tier5: 3,   // 60-100x 佔總體 8%
+                tier6: 1.5, // 150-300x 佔總體 1.5%
+                tier7: 0.5  // 350-500x 佔總體 0.5%
+                // 總和為 100
             }
         };
 
         // [新增] 倍數定義池 (帶內部權重)
-        // 權重邏輯：數字越大機率越高。例如 T1 中，2倍權重50，5倍權重5，則2倍出現率是5倍的10倍。
+        // 權重邏輯：數字越大機率越高。
         const MULT_POOLS = {
-            // T1 (普通): 2-5倍 (移除 1倍)
+            // T1 (最低): 1-5倍
             tier1: [
+                { val: 1, weight: 60 },
                 { val: 2, weight: 50 },
-                { val: 3, weight: 30 },
-                { val: 4, weight: 15 },
-                { val: 5, weight: 5 }
+                { val: 3, weight: 40 },
+                { val: 4, weight: 30 },
+                { val: 5, weight: 15 }
             ],
-            // T2 (稀有): 6-10倍
+            // T2 (低): 6-10倍
             tier2: [
-                { val: 6, weight: 40 },
-                { val: 7, weight: 25 },
-                { val: 8, weight: 20 },
-                { val: 9, weight: 10 },
-                { val: 10, weight: 5 }
+                { val: 6, weight: 25 },
+                { val: 7, weight: 15 },
+                { val: 8, weight: 10 },
+                { val: 9, weight: 5 },
+                { val: 10, weight: 2 }
             ],
-            // T3 (史詩): 15-50倍
+            // T3 (中): 15-30倍
             tier3: [
-                { val: 15, weight: 40 },
-                { val: 20, weight: 20 },
+                { val: 15, weight: 35 },
+                { val: 20, weight: 25 },
                 { val: 25, weight: 15 },
-                { val: 30, weight: 10 },
-                { val: 35, weight: 8 },
-                { val: 40, weight: 5 },
-                { val: 50, weight: 2 }
+                { val: 30, weight: 10 }
             ],
-            // T4 (傳說): 60-100倍
+            // T4 (中高): 35-50倍
             tier4: [
+                { val: 35, weight: 25 },
+                { val: 40, weight: 15 },
+                { val: 50, weight: 5 }
+            ],
+            // T5 (高): 60-100倍
+            tier5: [
                 { val: 60, weight: 40 },
                 { val: 70, weight: 25 },
                 { val: 80, weight: 20 },
                 { val: 90, weight: 10 },
                 { val: 100, weight: 5 }
             ],
-            // T5 (神話): 150-500倍
-            tier5: [
+            // T6 (傳說): 150-300倍
+            tier6: [
                 { val: 150, weight: 40 },
                 { val: 200, weight: 25 },
                 { val: 250, weight: 15 },
-                { val: 300, weight: 10 },
-                { val: 350, weight: 5 },
-                { val: 400, weight: 3 },
-                { val: 450, weight: 1 },
-                { val: 500, weight: 1 }
+                { val: 300, weight: 10 }
+            ],
+            // T7 (神話): 350-500倍
+            tier7: [
+                { val: 350, weight: 50 },
+                { val: 400, weight: 30 },
+                { val: 450, weight: 10 },
+                { val: 500, weight: 5 }
             ]
         };
 
