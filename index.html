@@ -2484,27 +2484,27 @@ if (!freeGame.active) {
                             )}
                         </div>
 
-                        {/* Top Win Bar */}
-                        <div ref={topBarRef} className="relative z-20 w-full max-w-[95vw] md:max-w-[800px] h-10 md:h-16 mb-1 bg-black/60 border border-[#fbbf24]/30 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-sm transition-all"><div className={`text-3xl md:text-5xl font-black tracking-widest transition-all duration-200 ${lasers.length > 0 ? 'text-white scale-125 drop-shadow-[0_0_10px_white]' : 'text-[#fbbf24] drop-shadow-md'}`}>{uiState.displayWinText}</div></div>
+<div ref={topBarRef} className="relative z-20 w-full max-w-[95vw] md:max-w-[800px] h-10 md:h-16 mb-1 bg-black/60 border border-[#fbbf24]/30 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-sm transition-all"><div className={`text-3xl md:text-5xl font-black tracking-widest transition-all duration-200 ${lasers.length > 0 ? 'text-white scale-125 drop-shadow-[0_0_10px_white]' : 'text-[#fbbf24] drop-shadow-md'}`}>{uiState.displayWinText}</div></div>
 
-                        {/* GRID CONTAINER */}
-                        <div className="relative w-full max-w-[95vw] md:max-w-[800px] aspect-[4/3] landscape:w-auto landscape:h-[85%] landscape:aspect-[16/10] landscape:max-w-none z-20 transition-all duration-300">
-
+                        {/* [修復] 限制橫屏最大寬度，防止遮擋左右按鈕 */}
+                        <div className="relative w-full max-w-[95vw] md:max-w-[800px] aspect-[4/3] landscape:w-auto landscape:h-[85%] landscape:aspect-[16/10] landscape:max-w-[75vw] z-20 transition-all duration-300">
+                            
                             {showFGTrigger && (<div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-yellow-500 to-yellow-800 drop-shadow-[0_0_20px_rgba(255,215,0,0.8)] animate-bounce-drop font-cinzel tracking-tighter text-center leading-tight">FREE<br />GAMES</div></div>)}
+                            
                             {freeGame.active && (<div className="absolute -right-2 -top-10 z-50 w-16 h-16 bg-[#2d1b0e] border-2 border-rose-500 rounded-xl flex flex-col items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.8)] animate-bounce-drop rotate-3"><div className="absolute -top-2 bg-rose-600 text-white text-[8px] font-bold px-2 rounded-full border border-rose-400">TOTAL</div><span className="text-2xl font-black text-white drop-shadow-md">{freeGame.accMult}x</span></div>)}
 
                             <div className="w-full h-full bg-gradient-to-b from-[#0b1c38] via-[#2b5a7a] to-[#0b1c38] rounded-lg border-2 md:border-4 border-amber-600 shadow-[0_0_60px_rgba(0,0,0,0.9)] grid grid-cols-6 grid-rows-5 gap-px p-0.5 relative overflow-hidden ring-2 ring-[#fbbf24]/30">
                                 {(() => {
                                     const scatterCount = grid.flat().filter(c => c && c.id === 99).length;
-
                                     return grid.map((row, r) => (
                                         row.map((cell, c) => {
                                             if (!cell) return <div key={`${r}-${c}`} className="bg-transparent"></div>;
+                                            
                                             const isEliminating = eliminatingCells.has(`${r}-${c}`);
                                             const isSpecialScatter = cell.id === 99 && scatterCount >= 4 && showFGTrigger;
                                             const isJustRevealed = cell.isJustRevealed;
                                             const isStruck = lightningStrikes.has(`${r}-${c}`);
-
+                                            
                                             const dropAnimationClass = (isSpinning && !isEliminating)
                                                 ? (cell.isNew ? 'animate-heavy-drop' : (cell.isDropping ? 'animate-survivor-drop' : ''))
                                                 : '';
@@ -2543,8 +2543,28 @@ if (!freeGame.active) {
                                                     {cell.id === 88 ? (() => {
                                                         let orbImageStr = './images/small.png'; const val = cell.val;
                                                         if (val <= 3) orbImageStr = './images/small.png'; else if (val <= 8) orbImageStr = './images/small2.png'; else if (val <= 15) orbImageStr = './images/small3.png'; else orbImageStr = './images/small4.png';
-                                                        return (<div className="relative w-full h-full flex items-center justify-center p-1 group"><img src={orbImageStr} alt={`${val}x`} className="w-full h-full object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200 group-hover:scale-105" /><span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-egyptian-gold text-5xl md:text-7xl z-20 pointer-events-none pb-2">{val}x</span></div>);
-                                                    })() : cell.id === 99 ? (<div className="relative w-full h-full flex flex-col items-center justify-center p-1"><img src={cell.icon} alt="Scatter" className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.6)]" /><div className="absolute bottom-0 w-full text-center"><span className="text-[10px] md:text-xs font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-yellow-600 drop-shadow-[0_2px_0_rgba(0,0,0,1)] tracking-wider font-cinzel block -mt-2">SCATTER</span></div></div>) : ((() => { const scale = cell.scale || 1; const sizePct = `${scale * 100}%`; return (<div className="w-full h-full flex items-center justify-center p-1 relative"><img src={cell.icon} alt={cell.name} className="object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200" style={{ width: sizePct, height: sizePct }} /></div>); })())}
+                                                        return (
+                                                            <div className="relative w-full h-full flex items-center justify-center p-1 group">
+                                                                <img src={orbImageStr} alt={`${val}x`} className="w-full h-full object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200 group-hover:scale-105" />
+                                                                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-egyptian-gold text-2xl md:text-6xl z-20 pointer-events-none pb-1 md:pb-2">{val}x</span>
+                                                            </div>
+                                                        );
+                                                    })() : cell.id === 99 ? (
+                                                        <div className="relative w-full h-full flex flex-col items-center justify-center p-1">
+                                                            <img src={cell.icon} alt="Scatter" className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.6)]" />
+                                                            <div className="absolute bottom-0 w-full text-center">
+                                                                <span className="text-[10px] md:text-xs font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-yellow-600 drop-shadow-[0_2px_0_rgba(0,0,0,1)] tracking-wider font-cinzel block -mt-2">SCATTER</span>
+                                                            </div>
+                                                        </div>
+                                                    ) : ((() => {
+                                                        const scale = cell.scale || 1;
+                                                        const sizePct = `${scale * 100}%`;
+                                                        return (
+                                                            <div className="w-full h-full flex items-center justify-center p-1 relative">
+                                                                <img src={cell.icon} alt={cell.name} className="object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200" style={{ width: sizePct, height: sizePct }} />
+                                                            </div>
+                                                        );
+                                                    })())}
                                                 </div>
                                             )
                                         })
@@ -2797,19 +2817,28 @@ if (!freeGame.active) {
                 return 'bg-[#2a2a2a] border-white/10 text-gray-500';
             };
 
+// [新增] 控制側邊欄開關的狀態
+            const [isSidebarOpen, setSidebarOpen] = useState(false);
+
             return (
-                <div className="h-screen bg-[#0f0500] text-white font-noto flex overflow-hidden">
-                    {/* --- Sidebar --- */}
-                    <div className="w-64 bg-[#1c1917] border-r border-white/10 flex flex-col shrink-0">
-                        <div className="h-16 flex items-center gap-2 px-6 border-b border-white/10 text-[#fbbf24] font-cinzel font-bold text-xl">
-                            <Settings className="text-[#fbbf24]" /> SETH ADMIN
-                        </div>
-                        <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scroll">
-                            <button onClick={() => setActiveTab('monitor')} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'monitor' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Activity size={18} /> 即時監控 (Live)</button>
-                            <button onClick={() => setActiveTab('config')} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'config' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><RotateCw size={18} /> 機率與桌台</button>
-                            <button onClick={() => setActiveTab('users')} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'users' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Users size={18} /> 玩家管理</button>
-                            <button onClick={() => setActiveTab('data')} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'data' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Database size={18} /> 數據維護</button>
-                        </nav>
+                <div className="h-screen bg-[#0f0500] text-white font-noto flex flex-col lg:flex-row overflow-hidden">
+                    {/* [新增] 移動端頂部欄 (Mobile Header) */}
+                    <div className="h-14 bg-[#1c1917] border-b border-white/10 flex items-center justify-between px-4 shrink-0 lg:hidden z-30 relative">
+                        <div className="flex items-center gap-2 text-[#fbbf24] font-cinzel font-bold text-lg"><Settings size={18}/> SETH ADMIN</div>
+                        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 text-white hover:bg-white/10 rounded">
+                            {isSidebarOpen ? <X size={20}/> : <Settings size={20}/>}
+                        </button>
+                    </div>
+
+                    {/* Sidebar (Responsive) */}
+                    {/* 手機端: 絕對定位+滑動效果; 桌面端: 固定顯示 */}
+                    <div className={`
+                        fixed inset-y-0 left-0 w-64 bg-[#1c1917] border-r border-white/10 flex flex-col z-40 shadow-2xl transition-transform duration-300
+                        lg:static lg:translate-x-0 
+                        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                    `}>
+                        <div className="h-16 hidden lg:flex items-center gap-2 px-6 border-b border-white/10 text-[#fbbf24] font-cinzel font-bold text-xl"><Settings className="text-[#fbbf24]" /> SETH ADMIN</div>
+                        <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scroll">                        </nav>
                         <div className="p-4 border-t border-white/10"><button onClick={onLogout} className="w-full flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors"><LogOut size={16} /> 登出系統</button></div>
                     </div>
 
@@ -2896,10 +2925,9 @@ if (!freeGame.active) {
                                                         return (
                                                             <div key={idx} className={`relative w-full h-full rounded-[2px] flex items-center justify-center overflow-hidden ${id===99?'bg-yellow-900/30':''}`}>
                                                                 {id === 88 ? (
-                                                                    // 倍数球特殊显示
-                                                                    <div className="w-full h-full flex items-center justify-center bg-purple-900/50 border border-purple-500/50 rounded-full scale-90">
-                                                                        <span className="text-[8px] font-black text-[#fbbf24] drop-shadow-md">{val}x</span>
-                                                                    </div>
+                                                                        <div className="w-full h-full flex items-center justify-center bg-purple-900/50 border border-purple-500/50 rounded-full">
+                                                                            <span className="text-xs md:text-[10px] font-black text-[#fbbf24] drop-shadow-md">{val}x</span>
+                                                                        </div>
                                                                 ) : (
                                                                     // 普通符号显示图片
                                                                     sym.icon.includes('.') 
