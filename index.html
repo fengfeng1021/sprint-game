@@ -2445,7 +2445,11 @@ if (!freeGame.active) {
                     <div className={`relative flex-grow flex flex-col items-center justify-center p-2 landscape:p-0 landscape:pb-8 overflow-hidden w-full`}>
 
                         {/* Background & Characters */}
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#2d1b0e_0%,_#0f0500_100%)] z-0"></div>
+                        {/* [修改] 替換為金色背景圖 */}
+                        <div className="absolute inset-0 z-0 bg-black">
+                            <img src="./images/golden-seth.jpg" alt="Background" className="w-full h-full object-cover opacity-60" />
+                            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80"></div>
+                        </div>
                         
                         {/* [新增] 背景呼吸光效层 */}
                         <div className="bg-breathing-light"></div>
@@ -2679,15 +2683,15 @@ if (!freeGame.active) {
 return (
                 <div className="h-screen bg-[#0f0500] text-white font-noto flex flex-col lg:flex-row overflow-hidden">
                     
-                    {/* [新增] 移動端頂部欄 (Mobile Header) */}
-                    <div className="h-14 bg-[#1c1917] border-b border-white/10 flex items-center justify-between px-4 shrink-0 lg:hidden z-30 relative">
+                    {/* [Mobile Header] 放在最外層，確保所有 Tab 都能看到 */}
+                    <div className="h-14 bg-[#1c1917] border-b border-white/10 flex items-center justify-between px-4 shrink-0 lg:hidden z-50 relative">
                         <div className="flex items-center gap-2 text-[#fbbf24] font-cinzel font-bold text-lg"><Settings size={18}/> SETH ADMIN</div>
                         <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 text-white hover:bg-white/10 rounded">
                             {isSidebarOpen ? <X size={20}/> : <Settings size={20}/>}
                         </button>
                     </div>
 
-                    {/* Sidebar (Responsive) */}
+                    {/* [Sidebar] 響應式設計: 桌面固定 / 手機滑出 */}
                     <div className={`
                         fixed inset-y-0 left-0 w-64 bg-[#1c1917] border-r border-white/10 flex flex-col z-40 shadow-2xl transition-transform duration-300
                         lg:static lg:transform-none
@@ -2703,8 +2707,10 @@ return (
                         <div className="p-4 border-t border-white/10"><button onClick={onLogout} className="w-full flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors"><LogOut size={16} /> 登出系統</button></div>
                     </div>
 
-                    {/* Main Content (Scrollable) */}
-                    <div className="flex-grow overflow-y-auto custom-scroll p-4 lg:p-8 bg-[#0a0a0a] relative" onClick={() => isSidebarOpen && setSidebarOpen(false)}>                    </div>
+                    {/* [Main Content] */}
+                    <div className="flex-grow overflow-y-auto custom-scroll p-4 lg:p-8 bg-[#0a0a0a] relative" onClick={() => isSidebarOpen && setSidebarOpen(false)}>
+                        
+                    </div>
 
                     {/* Table Grid */}
                     <div className="flex-grow p-6 pb-48 overflow-y-auto custom-scroll">
