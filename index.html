@@ -1405,7 +1405,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
 
             return (
                 <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-noto animate-in fade-in" onClick={onClose}>
-                    <div className="bg-[#1c1917] border border-[#fbbf24] w-full max-w-lg rounded-xl p-6 relative shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="bg-[#1c1917] border border-[#fbbf24] w-full max-w-lg rounded-lg p-4 md:p-6 relative shadow-2xl max-h-[90vh] overflow-y-auto custom-scroll" onClick={e => e.stopPropagation()}>
                         <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
                         <h2 className="text-xl font-bold text-[#fbbf24] mb-6 flex items-center gap-2"><BarChart2 /> 本桌数据 (Table Stats)</h2>
                         
@@ -2721,53 +2721,70 @@ if (!freeGame.active) {
                     </div>
 
                     {/* 底部详情状态栏 */}
-                    <div className={`fixed bottom-0 left-0 w-full bg-[#1c1917] border-t border-[#fbbf24] p-4 transition-transform duration-300 z-50 shadow-[0_-5px_30px_rgba(0,0,0,0.8)] ${selectedId ? 'translate-y-0' : 'translate-y-full'}`}>
+                    {/* [适配] 底部详情状态栏 (手机端紧凑版 / 桌面端完整版) */}
+                    <div className={`fixed bottom-0 left-0 w-full bg-[#1c1917] border-t border-[#fbbf24] p-3 md:p-4 transition-transform duration-300 z-50 shadow-[0_-5px_30px_rgba(0,0,0,0.9)] ${selectedId ? 'translate-y-0' : 'translate-y-full'}`}>
                         {activeTable && (
-                            <div className="max-w-7xl mx-auto flex flex-col xl:flex-row items-center justify-between gap-4 xl:gap-8">
-                                <div className="flex items-center gap-6 shrink-0">
-                                    <div className="text-5xl font-cinzel font-bold text-[#fbbf24] drop-shadow-md">#{activeTable.id}</div>
-                                    <div className="h-12 w-px bg-white/10 hidden md:block"></div>
-                                    <div className="flex gap-6 text-center">
-                                        <div><div className="text-[9px] text-gray-500 uppercase font-bold">今日 RTP</div><div className={`text-xl font-mono font-bold ${Number(calcRTP(activeTable.todayWin, activeTable.todayBet))>100 ? 'text-red-500':'text-emerald-500'}`}>{calcRTP(activeTable.todayWin, activeTable.todayBet)}%</div></div>
-                                        <div><div className="text-[9px] text-gray-500 uppercase font-bold">30日 RTP</div><div className="text-xl font-mono font-bold text-blue-400">{calcRTP(activeTable.totalWin, activeTable.totalBet)}%</div></div>
-                                    </div>
+                            <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-3 lg:gap-8">
+                                
+                                {/* 1. 手机端顶部：桌号 + 按钮 (左右分布) */}
+                                <div className="flex items-center justify-between w-full lg:w-auto lg:hidden">
+                                    <div className="text-3xl font-cinzel font-bold text-[#fbbf24]">#{activeTable.id}</div>
+                                    <button 
+                                        onClick={() => { if (isRealOccupied && activeTable.currentUserId !== user.id) alert("该桌已被占用"); else onSelectTable(activeTable.id); }}
+                                        disabled={isRealOccupied && activeTable.currentUserId !== user.id}
+                                        className={`px-6 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${ (isRealOccupied && activeTable.currentUserId !== user.id) ? 'bg-gray-800 text-gray-500' : 'bg-[#fbbf24] text-black' }`}
+                                    >
+                                        {(isRealOccupied && activeTable.currentUserId !== user.id) ? <Lock size={16}/> : <Play size={16}/>}
+                                        {(isRealOccupied && activeTable.currentUserId === user.id) ? '返回' : '进入'}
+                                    </button>
                                 </div>
 
-                                <div className="flex-grow bg-white/5 rounded-lg border border-white/10 p-2 flex items-center justify-around w-full xl:w-auto">
-                                    <div className="text-center">
-                                        <div className="text-[9px] text-purple-400 uppercase font-bold">平均 FG 機率</div>
-                                        <div className="text-lg font-mono font-bold text-white">1 / <span className="text-[#fbbf24]">{avgFG}</span></div>
+                                {/* 2. 数据展示区 (手机端 Grid / 桌面端 Flex) */}
+                                <div className="w-full lg:flex-grow flex flex-col lg:flex-row items-center gap-3 lg:gap-8">
+                                    {/* RTP 数据 */}
+                                    <div className="grid grid-cols-4 lg:flex gap-2 lg:gap-6 w-full lg:w-auto text-center lg:text-left bg-white/5 lg:bg-transparent p-2 lg:p-0 rounded-lg">
+                                        <div className="col-span-2 lg:col-span-1 flex lg:block items-center justify-between lg:justify-center px-2 lg:px-0">
+                                            <div className="text-[10px] text-gray-500 font-bold uppercase lg:mb-1">今日 RTP</div>
+                                            <div className={`text-lg lg:text-xl font-mono font-bold ${Number(calcRTP(activeTable.todayWin, activeTable.todayBet))>100?'text-red-500':'text-emerald-500'}`}>{calcRTP(activeTable.todayWin, activeTable.todayBet)}%</div>
+                                        </div>
+                                        <div className="col-span-2 lg:col-span-1 flex lg:block items-center justify-between lg:justify-center px-2 lg:px-0 border-l border-white/10 lg:border-0 pl-2 lg:pl-0">
+                                            <div className="text-[10px] text-gray-500 font-bold uppercase lg:mb-1">30日 RTP</div>
+                                            <div className="text-lg lg:text-xl font-mono font-bold text-blue-400">{calcRTP(activeTable.totalWin, activeTable.totalBet)}%</div>
+                                        </div>
+                                        
+                                        {/* 手机端额外显示的 FG 简略数据 */}
+                                        <div className="col-span-2 lg:hidden flex items-center justify-between px-2 border-t border-white/10 pt-2 mt-1">
+                                            <div className="text-[10px] text-purple-400 font-bold uppercase">平均 FG</div>
+                                            <div className="text-sm font-mono text-white">1 / <span className="text-[#fbbf24]">{avgFG}</span></div>
+                                        </div>
+                                        <div className="col-span-2 lg:hidden flex items-center justify-between px-2 border-t border-white/10 pt-2 mt-1 border-l pl-2">
+                                            <div className="text-[10px] text-purple-400 font-bold uppercase">FG 次数</div>
+                                            <div className="text-sm font-mono text-white">{activeTable.fgCount || 0}</div>
+                                        </div>
                                     </div>
-                                    <div className="h-8 w-px bg-white/10"></div>
-                                    <div className="text-center">
-                                        <div className="text-[9px] text-gray-500 uppercase font-bold">上1次 / 上2次</div>
-                                        <div className="text-lg font-mono text-gray-300">{last1} / {last2}</div>
-                                    </div>
-                                    <div className="h-8 w-px bg-white/10"></div>
-                                    <div className="text-center">
-                                        <div className="text-[9px] text-gray-500 uppercase font-bold">FG 進入次數</div>
-                                        <div className="text-lg font-mono font-bold text-white">{activeTable.fgCount || 0}</div>
+
+                                    {/* 桌面端详细 FG 数据栏 (手机端隐藏) */}
+                                    <div className="hidden lg:flex flex-grow bg-white/5 rounded-lg border border-white/10 p-2 items-center justify-around">
+                                        <div className="text-center"><div className="text-[9px] text-purple-400 uppercase font-bold">平均 FG 機率</div><div className="text-lg font-mono font-bold text-white">1 / <span className="text-[#fbbf24]">{avgFG}</span></div></div>
+                                        <div className="h-8 w-px bg-white/10"></div>
+                                        <div className="text-center"><div className="text-[9px] text-gray-500 uppercase font-bold">上1次 / 上2次</div><div className="text-lg font-mono text-gray-300">{last1} / {last2}</div></div>
+                                        <div className="h-8 w-px bg-white/10"></div>
+                                        <div className="text-center"><div className="text-[9px] text-gray-500 uppercase font-bold">FG 進入次數</div><div className="text-lg font-mono font-bold text-white">{activeTable.fgCount || 0}</div></div>
                                     </div>
                                 </div>
                                 
-                                <button 
-                                    onClick={() => {
-                                        if (isRealOccupied && activeTable.currentUserId !== user.id) {
-                                            alert("该桌已被占用");
-                                        } else {
-                                            onSelectTable(activeTable.id);
-                                        }
-                                    }}
-                                    disabled={isRealOccupied && activeTable.currentUserId !== user.id}
-                                    className={`shrink-0 px-8 py-4 rounded-lg font-bold text-lg flex items-center gap-2 transition-all ${
-                                        (isRealOccupied && activeTable.currentUserId !== user.id)
-                                        ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
-                                        : 'bg-gradient-to-r from-[#b45309] to-[#fbbf24] text-black hover:scale-105 hover:shadow-[0_0_20px_rgba(251,191,36,0.4)] active:scale-95'
-                                    }`}
-                                >
-                                    {(isRealOccupied && activeTable.currentUserId !== user.id) ? <Lock size={20}/> : <Play size={20}/>}
-                                    {(isRealOccupied && activeTable.currentUserId === user.id) ? '返回游戏' : '进入游戏'}
-                                </button>
+                                {/* 3. 桌面端右侧按钮 (手机端隐藏) */}
+                                <div className="hidden lg:flex items-center gap-6 shrink-0">
+                                    <div className="text-5xl font-cinzel font-bold text-[#fbbf24] drop-shadow-md">#{activeTable.id}</div>
+                                    <button 
+                                        onClick={() => { if (isRealOccupied && activeTable.currentUserId !== user.id) alert("该桌已被占用"); else onSelectTable(activeTable.id); }}
+                                        disabled={isRealOccupied && activeTable.currentUserId !== user.id}
+                                        className={`shrink-0 px-8 py-4 rounded-lg font-bold text-lg flex items-center gap-2 transition-all ${ (isRealOccupied && activeTable.currentUserId !== user.id) ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-[#b45309] to-[#fbbf24] text-black hover:scale-105' }`}
+                                    >
+                                        {(isRealOccupied && activeTable.currentUserId !== user.id) ? <Lock size={20}/> : <Play size={20}/>}
+                                        {(isRealOccupied && activeTable.currentUserId === user.id) ? '返回游戏' : '进入游戏'}
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
