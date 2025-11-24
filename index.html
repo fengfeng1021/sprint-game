@@ -401,48 +401,80 @@
             }
         }
 
-        @keyframes coinFall {
-            0% {
-                transform: translateY(-100vh) rotate(0deg);
-                opacity: 1;
-            }
-
-            100% {
-                transform: translateY(100vh) rotate(360deg);
-                opacity: 0;
-            }
+        /* ------------------------------------------------
+           F. 粒子系統升级 (Visual Upgrade: 3D Coins & Sparks)
+           ------------------------------------------------ */
+        @keyframes coinFall3D {
+            0% { transform: translate3d(0, -100px, 0) rotateX(0) rotateY(0) scale(0.5); opacity: 0; }
+            10% { opacity: 1; transform: translate3d(0, 0, 0) rotateX(45deg) rotateY(180deg) scale(1); }
+            100% { transform: translate3d(0, 110vh, 0) rotateX(360deg) rotateY(1080deg) scale(1); opacity: 0; }
         }
 
-        /* Animation Classes */
-        .animate-group-win {
-            animation: floatGroupWin calc(1.5s / var(--speed-factor, 1)) ease-out forwards;
-        }
-
-        .animate-win-pulse {
-            animation: winPulse 1.5s infinite ease-in-out;
-            z-index: 10;
-        }
-
-        .animate-spin-btn {
-            animation: spinButtonPulse 2s infinite;
-        }
-
-        /* [优化] 倍速球变身动画加速 */
-        .animate-magic-appear {
-            animation: magicHit calc(0.5s / var(--speed-factor, 1)) ease-out forwards;
+        @keyframes sparkBurst {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0); opacity: 0; }
         }
 
         .coin-particle {
             position: fixed;
-            top: -50px;
-            width: 30px;
-            height: 30px;
-            background: radial-gradient(circle at 30% 30%, #ffd700, #b8860b);
+            top: 0; left: 0;
+            width: 40px; height: 40px;
+            /* 高级质感渐变 */
+            background: radial-gradient(circle at 30% 30%, #fff7ed, #ffd700, #b45309);
             border-radius: 50%;
-            border: 2px solid #fff;
-            box-shadow: 0 0 10px gold;
+            border: 2px solid #fbbf24;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 0 10px rgba(255,215,0,0.8);
             z-index: 9999;
-            animation: coinFall linear forwards;
+            pointer-events: none;
+            will-change: transform;
+            /* 自动适配倍速变量 */
+            animation: coinFall3D calc(var(--duration, 3s) / var(--speed-factor, 1)) linear forwards;
+            animation-delay: calc(var(--delay, 0s) / var(--speed-factor, 1));
+        }
+        /* 金币纹理 */
+        .coin-particle::after {
+            content: '$';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: 'Times New Roman', serif;
+            font-weight: bold;
+            color: #92400e;
+            font-size: 24px;
+            opacity: 0.8;
+        }
+
+        .click-particle {
+            position: fixed;
+            width: 6px; height: 6px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #ffd700, 0 0 20px #fbbf24;
+            z-index: 99999;
+            pointer-events: none;
+            /* 点击火花动画 */
+            animation: sparkBurst calc(0.6s / var(--speed-factor, 1)) ease-out forwards;
+        }
+        /* ------------------------------------------------
+           G. 背景呼吸光效 (Background Breathing Light)
+           ------------------------------------------------ */
+        @keyframes bgBreathingAnim {
+            0% { opacity: 0.2; transform: translate(-50%, -50%) scale(0.8); }
+            50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.2); }
+            100% { opacity: 0.2; transform: translate(-50%, -50%) scale(0.8); }
+        }
+
+        .bg-breathing-light {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 120vmax; height: 120vmax; /* 覆盖全屏 */
+            background: radial-gradient(circle, rgba(251, 191, 36, 0.15) 0%, rgba(180, 83, 9, 0.05) 40%, transparent 70%);
+            pointer-events: none;
+            z-index: 5; /* 位于背景(0)之上，人物(10)之下 */
+            mix-blend-mode: screen; /* 混合模式产生发光感 */
+            will-change: transform, opacity;
+            /* 自动适配倍速：基准呼吸周期 5秒 */
+            animation: bgBreathingAnim calc(5s / var(--speed-factor, 1)) infinite ease-in-out;
         }
 
         #error-overlay {
@@ -513,13 +545,44 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             for (let i = 0; i < amount; i++) {
                 const coin = document.createElement('div');
                 coin.className = 'coin-particle';
-                coin.style.left = Math.random() * 100 + 'vw';
-                coin.style.animationDuration = (Math.random() * 2 + 2) + 's';
-                coin.style.animationDelay = Math.random() * 1 + 's';
+                
+                // 随机化参数
+                const x = Math.random() * 100; // 0-100vw
+                const duration = Math.random() * 2 + 2; // 2-4秒
+                const delay = Math.random() * 0.5; // 0-0.5秒延迟
+                
+                coin.style.left = `${x}vw`;
+                coin.style.setProperty('--duration', `${duration}s`);
+                coin.style.setProperty('--delay', `${delay}s`);
+                
                 body.appendChild(coin);
-                setTimeout(() => coin.remove(), 4000);
+                // 延时移除 (给足够的时间防止动画被切断)
+                setTimeout(() => coin.remove(), (duration + delay + 1) * 1000);
             }
         };
+
+        // [新增] 全局点击/触摸粒子特效
+        window.addEventListener('pointerdown', (e) => {
+            const count = 8; // 每次点击产生的火花数量
+            for (let i = 0; i < count; i++) {
+                const p = document.createElement('div');
+                p.className = 'click-particle';
+                p.style.left = e.clientX + 'px';
+                p.style.top = e.clientY + 'px';
+                
+                // 随机散射方向
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 60 + 20; // 扩散距离
+                const tx = Math.cos(angle) * dist + 'px';
+                const ty = Math.sin(angle) * dist + 'px';
+                
+                p.style.setProperty('--tx', tx);
+                p.style.setProperty('--ty', ty);
+                
+                document.body.appendChild(p);
+                setTimeout(() => p.remove(), 1000);
+            }
+        });
 
         // ---------------------------------------------------------
         // REFACTORED AUDIO SYSTEM (SINGLE CONTEXT)
@@ -580,6 +643,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
 
         // [修改] 將權重預設值改為百分比格式 (總和建議為 100)
         const DEFAULT_CONFIG = {
+            tableCount: 12,            // [新增] 默认开放桌台数量
             emptySpinProbability: 0.2, // 強制空轉率
             smashProbability: 0.3,     // 砸球機率
 
@@ -1320,14 +1384,14 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
            );
         }
 
-// --- [新增] 玩家数据面板 (真实数据版) ---
+// --- [新增] 玩家数据面板 (Table & FG Stats) ---
         function PlayerStatsModal({ isOpen, onClose, history, globalStats, todayStats }) {
             if (!isOpen) return null;
             
             // 计算 RTP
             const calcRTP = (win, bet) => bet > 0 ? ((win / bet) * 100).toFixed(2) : "0.00";
             const todayRTP = calcRTP(todayStats.win, todayStats.bet);
-            const lifetimeRTP = calcRTP(globalStats.win, globalStats.bet);
+            const tableRTP = calcRTP(globalStats.win, globalStats.bet);
 
             return (
                 <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-noto animate-in fade-in" onClick={onClose}>
@@ -1335,28 +1399,34 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                         <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
                         <h2 className="text-xl font-bold text-[#fbbf24] mb-6 flex items-center gap-2"><BarChart2 /> 數據中心 (Real-Time)</h2>
                         
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                            {/* 今日 RTP */}
+                        <div className="grid grid-cols-2 gap-4 mb-4">
                             <div className="bg-black/40 p-3 rounded border border-white/10 text-center">
-                                <div className="text-xs text-gray-500 uppercase font-bold mb-1">今日 RTP (Today)</div>
-                                <div className={`text-3xl font-mono font-black ${Number(todayRTP) >= 100 ? 'text-rose-500' : 'text-emerald-400'}`}>{todayRTP}%</div>
-                                <div className="text-[10px] text-gray-500 mt-1">
-                                    Win: <span className="text-white">{todayStats.win.toFixed(0)}</span> / Bet: <span className="text-white">{todayStats.bet}</span>
-                                </div>
+                                <div className="text-xs text-gray-500 uppercase font-bold mb-1">今日 RTP (个人)</div>
+                                <div className={`text-2xl font-mono font-black ${Number(todayRTP) >= 100 ? 'text-rose-500' : 'text-emerald-400'}`}>{todayRTP}%</div>
+                                <div className="text-[10px] text-gray-500">Win: {todayStats.win.toFixed(0)} / Bet: {todayStats.bet}</div>
                             </div>
-                            
-                            {/* 历史/30日 RTP (全桌累计) */}
                             <div className="bg-black/40 p-3 rounded border border-white/10 text-center">
-                                <div className="text-xs text-gray-500 uppercase font-bold mb-1">历史累计 RTP (Global)</div>
-                                <div className={`text-3xl font-mono font-black ${Number(lifetimeRTP) >= 100 ? 'text-rose-500' : 'text-blue-400'}`}>{lifetimeRTP}%</div>
-                                <div className="text-[10px] text-gray-500 mt-1">
-                                    Total Win: <span className="text-white">{(globalStats.win / 10000).toFixed(1)}w</span>
-                                </div>
+                                <div className="text-xs text-gray-500 uppercase font-bold mb-1">本桌累计 RTP (Table)</div>
+                                <div className={`text-2xl font-mono font-black ${Number(tableRTP) >= 100 ? 'text-rose-500' : 'text-blue-400'}`}>{tableRTP}%</div>
+                                <div className="text-[10px] text-gray-500">Win: {(globalStats.win/10000).toFixed(2)}w</div>
+                            </div>
+                        </div>
+
+                         {/* [新增] FG 统计模块 */}
+                         <div className="bg-purple-900/10 border border-purple-500/30 p-3 rounded mb-6 flex justify-around items-center">
+                            <div className="text-center">
+                                <div className="text-[10px] text-purple-400 uppercase font-bold">FG 触发次数</div>
+                                <div className="text-lg font-mono font-bold text-white">{globalStats.fgCount || 0}</div>
+                            </div>
+                            <div className="h-8 w-px bg-purple-500/30"></div>
+                            <div className="text-center">
+                                <div className="text-[10px] text-purple-400 uppercase font-bold">FG 总派彩</div>
+                                <div className="text-lg font-mono font-bold text-[#fbbf24]">${(globalStats.fgTotalWin || 0).toLocaleString()}</div>
                             </div>
                         </div>
 
                         <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><ChevronsRight size={16} /> 最近投注 (Last 10)</h3>
-                        <div className="bg-black/40 rounded border border-white/10 overflow-hidden h-[240px] overflow-y-auto custom-scroll">
+                        <div className="bg-black/40 rounded border border-white/10 overflow-hidden h-[180px] overflow-y-auto custom-scroll">
                             <table className="w-full text-xs text-left">
                                 <thead className="text-gray-400 sticky top-0 bg-[#2d2a26] z-10 shadow-md">
                                     <tr><th className="p-2">Time</th><th className="p-2">Bet</th><th className="p-2">Win</th><th className="p-2">Mult</th></tr>
@@ -1379,82 +1449,11 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                 </div>
             );
         }
-        // --- [修改] 火球組件：修正飛行終點偏移問題 ---
-        function Fireball({ startX, startY, targetX, targetY, isLeft }) {
-            const [pos, setPos] = useState({ left: startX, top: startY });
-            const [angle, setAngle] = useState(0);
-
-            useEffect(() => {
-                // 1. 計算飛行角度
-                const dx = targetX - startX;
-                const dy = targetY - startY;
-                const deg = Math.atan2(dy, dx) * (180 / Math.PI);
-                setAngle(deg);
-
-                // 2. 觸發飛行
-                const timer = setTimeout(() => {
-                    setPos({ left: targetX, top: targetY });
-                }, 50);
-                return () => clearTimeout(timer);
-            }, [startX, startY, targetX, targetY]);
-
-            return (
-                <div
-                    style={{
-                        position: 'absolute',
-                        left: `${pos.left}%`,
-                        top: `${pos.top}%`,
-                        transition: 'left 0.25s ease-in, top 0.25s ease-in', // 飛行速度
-                        zIndex: 9999,
-                        pointerEvents: 'none',
-                        // [關鍵修正] 
-                        // 先 translate(-50%, -50%) 確保中心點對齊座標
-                        // 再 rotate(${angle}deg) 進行旋轉
-                        transform: `translate(-50%, -50%) rotate(${angle}deg)`
-                    }}
-                >
-                    {/* 根據 isLeft 決定顏色 class */}
-                    <div className={`fireball-projectile ${isLeft ? 'fireball-blue' : 'fireball-purple'}`}></div>
-                </div>
-            );
-        }
-
-        // --- [新增] 悬浮日志窗口 ---
-        function FloatingLogger({ logs, visible, onToggle }) {
-            if (!visible) return (
-                <button onClick={onToggle} className="fixed top-2 left-2 z-[100] bg-black/50 text-white p-2 rounded-full border border-white/20 hover:bg-black/80">
-                    <Terminal size={16} />
-                </button>
-            );
-
-            return (
-                <div className="fixed top-2 left-2 z-[100] w-64 max-h-[300px] flex flex-col font-noto animate-in slide-in-from-left-10">
-                    <div className="bg-black/80 backdrop-blur-md border border-white/20 rounded-t-lg p-2 flex justify-between items-center cursor-pointer" onClick={onToggle}>
-                        <span className="text-xs font-bold text-[#fbbf24] flex items-center gap-2"><Terminal size={12} /> 系统日志</span>
-                        <Minus size={12} className="text-gray-400" />
-                    </div>
-                    <div className="bg-black/60 border-x border-b border-white/10 rounded-b-lg p-2 overflow-y-auto custom-scroll h-full text-[10px] font-mono">
-                        {logs.length === 0 && <div className="text-gray-500 italic">等待数据...</div>}
-                        {logs.map((l, i) => (
-                            <div key={i} className={`mb-1 border-b border-white/5 pb-1 last:border-0 ${l.type === 'error' ? 'text-red-400' :
-                                l.type === 'success' ? 'text-emerald-400' :
-                                    l.type === 'gold' ? 'text-yellow-400' :
-                                        l.type === 'warning' ? 'text-orange-400' :
-                                            'text-gray-300'
-                                }`}>
-                                <span className="opacity-50 mr-1">[{l.time}]</span>
-                                {l.msg}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        }
 
         // ------------------------------------------------------------
         // Game Engine (最终完整版：修复音量变量未定义错误)
         // ------------------------------------------------------------
-        function GameEngine({ user, globalConfig, onLogout, onUpdateBalance }) {
+        function GameEngine({ user, globalConfig, onLogout, onUpdateBalance, tableId, onLeaveTable }) {
             const [config, setConfig] = useState(globalConfig);
             const configRef = useRef(globalConfig);
 
@@ -1531,38 +1530,22 @@ const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
                 return () => { unsubGlobal(); unsubToday(); unsubUser(); };
             }, []);
 
-            // [Helper] 上传游戏数据到数据库
-            const saveGameStats = async (betAmount, winAmount, finalMult) => {
-                const todayStr = new Date().toISOString().split('T')[0];
-                const statsRefGlobal = doc(db, 'apps', APP_ID, 'stats', 'global');
-                const statsRefToday = doc(db, 'apps', APP_ID, 'stats', todayStr);
+            // [DB Save] 写入 Table 独立数据
+            const saveGameStats = async (betAmount, winAmount, finalMult, isFGTrigger, isFGWin) => {
+                const tableRef = doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`);
                 const userRef = doc(db, 'apps', APP_ID, COL_USERS, user.id);
-
-                const newRecord = {
-                    time: new Date().toLocaleTimeString('zh-TW', { hour12: false }),
-                    bet: betAmount,
-                    win: winAmount,
-                    mult: finalMult
-                };
+                const newRecord = { time: new Date().toLocaleTimeString('zh-TW', { hour12: false }), bet: betAmount, win: winAmount, mult: finalMult };
+                
+                const updates = { totalBet: increment(betAmount), totalWin: increment(winAmount), lastUpdate: new Date().getTime() };
+                if (isFGTrigger) updates.fgCount = increment(1);
+                if (isFGWin) updates.fgTotalWin = increment(winAmount);
 
                 try {
-                    // 原子更新统计数据 (Increment)
-                    updateDoc(statsRefGlobal, { bet: increment(betAmount), win: increment(winAmount) }).catch(() => setDoc(statsRefGlobal, { bet: betAmount, win: winAmount }));
-                    updateDoc(statsRefToday, { bet: increment(betAmount), win: increment(winAmount) }).catch(() => setDoc(statsRefToday, { bet: betAmount, win: winAmount }));
-                    
-                    // 更新个人历史记录 (手动维护数组长度)
+                    updateDoc(tableRef, updates).catch(() => setDoc(tableRef, { ...updates, status: 'occupied' }));
                     const userDoc = await getDoc(userRef);
-                    let currentHistory = [];
-                    if (userDoc.exists() && userDoc.data().history) {
-                        currentHistory = userDoc.data().history;
-                    }
-                    const updatedHistory = [newRecord, ...currentHistory].slice(0, 10); // 只保留最近10条
-                    
-                    updateDoc(userRef, { history: updatedHistory });
-                    
-                } catch (e) {
-                    console.error("Stats Save Error", e);
-                }
+                    let currentHistory = userDoc.exists() && userDoc.data().history ? userDoc.data().history : [];
+                    updateDoc(userRef, { history: [newRecord, ...currentHistory].slice(0, 10) });
+                } catch (e) { console.error(e); }
             };
             // --- [7. Refs] ---
             const mounted = useRef(true);
@@ -1573,6 +1556,32 @@ const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
             // --- [8. 初始化与监听] ---
             useEffect(() => { setConfig(globalConfig); configRef.current = globalConfig; }, [globalConfig]);
             useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+            // [Table Logic] 进桌标记占用，离桌清除状态
+            useEffect(() => { 
+                mounted.current = true;
+                const tableRef = doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`);
+                updateDoc(tableRef, { status: 'occupied', currentUser: user.name, currentUserId: user.id })
+                    .catch(() => setDoc(tableRef, { status: 'occupied', currentUser: user.name, currentUserId: user.id, totalBet:0, totalWin:0, fgCount:0, fgTotalWin:0 }));
+                return () => { 
+                    mounted.current = false;
+                    updateDoc(tableRef, { status: 'idle', currentUser: null, currentUserId: null });
+                }; 
+            }, [tableId, user.name, user.id]);
+
+            // [Listener] 监听本桌数据 (RTP & FG)
+            useEffect(() => {
+                const unsubTable = onSnapshot(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), (doc) => {
+                    if (doc.exists()) {
+                         const d = doc.data();
+                         setGlobalStats({ bet: d.totalBet || 0, win: d.totalWin || 0, fgCount: d.fgCount || 0, fgTotalWin: d.fgTotalWin || 0 });
+                    }
+                });
+                const unsubUser = onSnapshot(doc(db, 'apps', APP_ID, COL_USERS, user.id), (doc) => {
+                    if (doc.exists() && doc.data().history) setPlayHistory(doc.data().history);
+                });
+                return () => { unsubTable(); unsubUser(); };
+            }, [tableId, user.id]);
 
             // 自动旋转
             useEffect(() => {
@@ -1755,9 +1764,14 @@ const smartWait = (ms, isFastMode = false) => {
 if (!freeGame.active) { 
                         currentBalance -= cost; 
                         onUpdateBalance(currentBalance); 
-                    } else { 
+                    } 
+                    else { 
                         setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft - 1 })); 
                     }
+
+                    // [Monitor] 更新状态为旋转中
+                    updateDoc(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), { status: 'spinning' });
+
                     playSound('spin');
                     await new Promise(r => setTimeout(r, 50 / gameSpeed));
 
@@ -2097,9 +2111,16 @@ if (!freeGame.active) {
                     playSound('bigwin'); await smartWait(1000, false);
                 }
 
-// [DB Save] 保存真实数据到数据库
-                if (currentCost > 0) {
-                    saveGameStats(currentCost, finalWin, finalMult);
+// [Status Update] 保持占用状态
+                updateDoc(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), { status: 'occupied' });
+                
+                // [DB Save] 写入数据库 (含 FG 统计)
+                const finalScattersCount = currentGrid.flat().filter(c => c && c.id === 99).length;
+                const triggerFG = !freeGame.active && finalScattersCount >= 4;
+                const isFGWin = freeGame.active && finalWin > 0;
+                
+                if (currentCost > 0 || finalWin > 0) {
+                    saveGameStats(currentCost, finalWin, finalMult, triggerFG, isFGWin);
                 }
 
                 setIsSpinning(false);            };
@@ -2220,11 +2241,12 @@ if (!freeGame.active) {
                             )}
                         </div>
 
-                        {user.role === 'admin' && (                            <button onClick={() => setIsAdminOpen(!isAdminOpen)} className="bg-black/50 text-[#fbbf24] p-2 rounded-full border border-[#fbbf24]/30">
+                        {user.role === 'admin' && (
+                            <button onClick={() => setIsAdminOpen(!isAdminOpen)} className="bg-black/50 text-[#fbbf24] p-2 rounded-full border border-[#fbbf24]/30">
                                 <Settings size={14} />
                             </button>
                         )}
-                        <button onClick={onLogout} className="bg-black/50 text-rose-400 p-2 rounded-full border border-rose-500/30">
+                        <button onClick={onLeaveTable} className="bg-black/50 text-rose-400 p-2 rounded-full border border-rose-500/30">
                             <LogOut size={14} />
                         </button>
                     </div>
@@ -2234,6 +2256,10 @@ if (!freeGame.active) {
 
                         {/* Background & Characters */}
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#2d1b0e_0%,_#0f0500_100%)] z-0"></div>
+                        
+                        {/* [新增] 背景呼吸光效层 */}
+                        <div className="bg-breathing-light"></div>
+
                         <img src="./images/man.png" alt="Character Left" className={`hidden lg:block absolute left-[2%] xl:left-[2%] top-1/2 -translate-y-1/2 h-[90%] max-h-[900px] w-auto object-contain z-10 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 hover:scale-105 ${isManCasting ? 'animate-character-cast' : ''}`} />
                         <img src="./images/woman.png" alt="Character Right" className={`hidden lg:block absolute right-[2%] xl:right-[4%] top-1/2 -translate-y-1/2 h-[90%] max-h-[900px] w-auto object-contain z-10 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 hover:scale-105 ${isWomanCasting ? 'animate-character-cast' : ''}`} style={{ transform: 'translateY(-50%)' }} />
 
@@ -2366,22 +2392,68 @@ if (!freeGame.active) {
                 </div>
             );
         }
+        
+        // --- [新增] 选桌大厅组件 ---
+        function TableLobby({ tableCount, onSelectTable, user, onLogout }) {
+            const [tables, setTables] = useState([]);
+            useEffect(() => {
+                const unsub = onSnapshot(collection(db, 'apps', APP_ID, 'tables'), (snapshot) => {
+                    const list = Array.from({length: tableCount}, (_, i) => ({ id: i+1, status: 'idle', currentUser: null }));
+                    snapshot.forEach(doc => {
+                        const id = parseInt(doc.id.replace('table_', ''));
+                        if (id > 0 && id <= tableCount) list[id-1] = { ...list[id-1], ...doc.data() };
+                    });
+                    setTables(list);
+                });
+                return () => unsub();
+            }, [tableCount]);
+
+            return (
+                <div className="min-h-screen bg-[#0f0500] text-white font-noto flex flex-col animate-in fade-in">
+                    <div className="h-16 bg-[#1c1917] border-b border-[#fbbf24]/30 flex items-center justify-between px-6 shrink-0 z-10 shadow-xl">
+                        <div className="flex items-center gap-3"><span className="text-2xl font-cinzel font-bold text-[#fbbf24]">SETH II</span><span className="bg-[#fbbf24]/20 text-[#fbbf24] px-2 py-0.5 rounded text-xs font-bold">LOBBY</span></div>
+                        <div className="flex items-center gap-4"><div className="flex flex-col items-end mr-4"><span className="text-sm font-bold text-gray-300">{user.name}</span><span className="text-xs font-mono text-[#fbbf24]">${Math.floor(user.balance).toLocaleString()}</span></div><button onClick={onLogout} className="bg-white/5 hover:bg-white/10 p-2 rounded-full transition-colors text-gray-400 hover:text-white"><LogOut size={20} /></button></div>
+                    </div>
+                    <div className="flex-grow p-6 overflow-y-auto custom-scroll">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 max-w-7xl mx-auto">
+                            {tables.map(t => {
+                                const isOccupied = t.status === 'occupied' || t.status === 'spinning';
+                                const isSelf = t.currentUserId === user.id;
+                                return (
+                                    <button key={t.id} onClick={() => !isOccupied && onSelectTable(t.id)} disabled={isOccupied && !isSelf} className={`group relative aspect-[4/3] rounded-xl border-2 transition-all duration-300 flex flex-col items-center justify-center gap-3 overflow-hidden shadow-2xl ${isOccupied ? (isSelf ? 'bg-emerald-900/20 border-emerald-500/50 hover:bg-emerald-900/40 cursor-pointer' : 'bg-red-900/10 border-red-900/30 opacity-60 cursor-not-allowed grayscale') : 'bg-[#1c1917] border-[#fbbf24]/30 hover:border-[#fbbf24] hover:shadow-[0_0_30px_rgba(251,191,36,0.2)] hover:-translate-y-1'}`}>
+                                        <div className={`absolute top-0 left-0 px-3 py-1 rounded-br-lg font-black font-cinzel text-lg ${isOccupied ? (isSelf ? 'bg-emerald-600 text-white' : 'bg-red-900 text-red-200') : 'bg-[#fbbf24] text-black'}`}>#{t.id}</div>
+                                        <div className={`p-4 rounded-full border-2 transition-transform duration-500 group-hover:scale-110 ${isOccupied ? 'bg-black/50 border-white/10' : 'bg-gradient-to-br from-[#fbbf24] to-[#b45309] border-white/20'}`}>{isOccupied ? <Lock size={32} className="text-gray-400" /> : <Play size={32} className="text-black ml-1" />}</div>
+                                        <div className="absolute bottom-0 w-full bg-black/80 py-2 text-center backdrop-blur-sm">{isOccupied ? (<div className="flex flex-col"><span className={`text-xs font-bold uppercase ${isSelf ? 'text-emerald-400' : 'text-red-400'}`}>{isSelf ? 'RETURN TO GAME' : 'OCCUPIED'}</span>{!isSelf && <span className="text-[10px] text-gray-500 truncate px-2">{t.currentUser || 'Unknown'}</span>}</div>) : (<div className="text-xs font-bold text-[#fbbf24] tracking-widest">ENTER TABLE</div>)}</div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         // ------------------------------------------------------------
         // Admin Dashboard (Updated with Detailed Symbol Config)
         // ------------------------------------------------------------
         function AdminDashboard({ users, onCreateUser, onDeleteUser, onUpdateUserBalance, config, onUpdateConfig, onLogout, onResetData }) {
-            const [activeTab, setActiveTab] = useState('config');
+            const [activeTab, setActiveTab] = useState('monitor'); // 默认显示监控
             const [newUser, setNewUser] = useState({ id: '', name: '', password: '', balance: 10000 });
-
-            // 本地狀態：用於編輯權重，避免輸入時頻繁觸發資料庫寫入
             const [localWeights, setLocalWeights] = useState(config.symbolWeights || DEFAULT_CONFIG.symbolWeights);
+            const [tables, setTables] = useState([]);
 
-            // 當從資料庫拉取到新設定時，同步更新本地狀態
+            useEffect(() => { if (config.symbolWeights) setLocalWeights(config.symbolWeights); }, [config]);
+            
+            // [Monitor] 实时监听所有桌台
             useEffect(() => {
-                if (config.symbolWeights) {
-                    setLocalWeights(config.symbolWeights);
+                if (activeTab === 'monitor') {
+                    const unsub = onSnapshot(collection(db, 'apps', APP_ID, 'tables'), (snap) => {
+                        const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+                        setTables(list.sort((a,b) => parseInt(a.id.split('_')[1]) - parseInt(b.id.split('_')[1])));
+                    });
+                    return () => unsub();
                 }
-            }, [config]);
+            }, [activeTab]);
 
             // 處理單一符號權重變更
             const handleWeightChange = (id, val) => {
@@ -2405,8 +2477,11 @@ if (!freeGame.active) {
                             <Settings className="text-[#fbbf24]" /> SETH ADMIN
                         </div>
                         <nav className="flex-grow p-4 space-y-2">
+                            <button onClick={() => setActiveTab('monitor')} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'monitor' ? 'bg-[#fbbf24] text-black font-bold' : 'text-gray-400 hover:bg-white/5'}`}>
+                                <Activity size={18} /> 实时监控
+                            </button>
                             <button onClick={() => setActiveTab('config')} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'config' ? 'bg-[#fbbf24] text-black font-bold' : 'text-gray-400 hover:bg-white/5'}`}>
-                                <RotateCw size={18} /> 機率參數
+                                <RotateCw size={18} /> 机率与桌台
                             </button>
                             <button onClick={() => setActiveTab('users')} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'users' ? 'bg-[#fbbf24] text-black font-bold' : 'text-gray-400 hover:bg-white/5'}`}>
                                 <Users size={18} /> 玩家管理
@@ -2425,9 +2500,34 @@ if (!freeGame.active) {
                     {/* --- Main Content --- */}
                     <div className="flex-grow p-8 overflow-y-auto custom-scroll">
 
-                        {/* CONFIG TAB - 百分比設定優化版 */}
+                        {/* MONITOR TAB */}
+                        {activeTab === 'monitor' && (
+                             <div className="grid grid-cols-3 xl:grid-cols-4 gap-4">
+                                {Array.from({length: config.tableCount || 12}).map((_, i) => {
+                                    const tableNum = i + 1;
+                                    const t = tables.find(tb => tb.id === `table_${tableNum}`) || {};
+                                    const isBusy = t.status === 'occupied' || t.status === 'spinning';
+                                    const rtp = t.totalBet > 0 ? ((t.totalWin/t.totalBet)*100).toFixed(1) : '0.0';
+                                    return (
+                                        <div key={tableNum} className={`p-4 rounded-lg border ${isBusy ? 'bg-emerald-900/10 border-emerald-500/50' : 'bg-[#1c1917] border-white/10'} relative overflow-hidden`}>
+                                            <div className="flex justify-between items-start mb-2"><span className="font-cinzel font-bold text-lg">Table {tableNum}</span><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isBusy ? 'bg-emerald-500 text-black' : 'bg-gray-700 text-gray-400'}`}>{t.status || 'IDLE'}</span></div>
+                                            <div className="space-y-1 text-xs">
+                                                <div className="flex justify-between"><span className="text-gray-500">Player</span><span className="text-white font-bold">{t.currentUser || '-'}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">RTP</span><span className={`${Number(rtp)>100?'text-red-400':'text-blue-400'} font-mono`}>{rtp}%</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">FG Hits</span><span className="text-purple-400">{t.fgCount || 0}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">Win</span><span className="text-[#fbbf24]">${(t.totalWin||0).toLocaleString()}</span></div>
+                                            </div>
+                                            {t.status === 'spinning' && <div className="absolute bottom-0 left-0 h-1 bg-emerald-500 animate-[width_2s_infinite] w-full"></div>}
+                                        </div>
+                                    )
+                                })}
+                             </div>
+                        )}
+
+                        {/* CONFIG TAB */}
                         {activeTab === 'config' && (
                             <div className="max-w-5xl mx-auto">
+                                <div className="bg-[#1c1917] p-6 rounded-lg border border-white/10 mb-8"><h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-400"><Settings size={20}/> 基础设定</h2><div className="grid grid-cols-2 gap-8"><div><label className="text-sm text-gray-300 mb-2 block">开放桌台数量</label><input type="number" min="1" max="50" value={config.tableCount || 12} onChange={e => onUpdateConfig({ ...config, tableCount: Number(e.target.value) })} className="w-full bg-black border border-white/20 rounded px-3 py-2 text-white font-mono font-bold outline-none focus:border-blue-500" /></div></div></div>
 
                                 {/* --- 第一部分：符號出現機率 (Symbol Probability) --- */}
                                 <div className="mb-8">
@@ -2743,6 +2843,7 @@ if (!freeGame.active) {
             const [usersData, setUsersData] = useState([]);
             const [configData, setConfigData] = useState(DEFAULT_CONFIG);
             const [currentUser, setCurrentUser] = useState(null);
+            const [currentTable, setCurrentTable] = useState(null); // [New] 选中的桌台
             const [loading, setLoading] = useState(true);
             const [permissionError, setPermissionError] = useState(false);
 
@@ -2857,12 +2958,25 @@ if (!freeGame.active) {
                     )}
 
                     {currentUser && currentUser.role === 'player' && (
-                        <GameEngine
-                            user={currentUser}
-                            globalConfig={configData}
-                            onLogout={() => setCurrentUser(null)}
-                            onUpdateBalance={(val) => handleUpdateUserBalance(currentUser.id, val)}
-                        />
+                        <>
+                            {!currentTable ? (
+                                <TableLobby 
+                                    user={currentUser}
+                                    tableCount={configData.tableCount || 12} 
+                                    onSelectTable={(id) => setCurrentTable(id)}
+                                    onLogout={() => setCurrentUser(null)}
+                                />
+                            ) : (
+                                <GameEngine
+                                    user={currentUser}
+                                    globalConfig={configData}
+                                    tableId={currentTable}
+                                    onLeaveTable={() => setCurrentTable(null)}
+                                    onUpdateBalance={(val) => handleUpdateUserBalance(currentUser.id, val)}
+                                    onLogout={() => { setCurrentTable(null); setCurrentUser(null); }}
+                                />
+                            )}
+                        </>
                     )}
                 </>
             );
