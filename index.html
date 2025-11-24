@@ -1842,26 +1842,14 @@ const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
             }, [sfxVolume]);
 
             // SFX 播放函数（优化版：使用音频池 + 克隆模式）
-            const playSound = useCallback((type) => {
-                const master = audioPool.current[type];
-                if (!master) return;
-
-                // 如果音频未播放，直接复用主实例
-                if (master.paused || master.ended) {
-                    master.currentTime = 0;
-                    master.play().catch(e => console.warn(`SFX play failed [${type}]:`, e));
-                } else {
-                    // 正在播放时，克隆新实例以支持并发播放
-                    try {
-                        const clone = master.cloneNode();
-                        clone.volume = sfxVolume;
-                        clone.play().catch(e => console.warn(`SFX clone play failed [${type}]:`, e));
-                    } catch (err) {
-                        // 克隆失败时降级：重置主实例并播放
-                        master.currentTime = 0;
-                        master.play().catch(e => console.warn(`SFX fallback play failed [${type}]:`, e));
-                    }
-                }
+            const playSound = useCallback((type) => { 
+                const audio = audioPool.current[type]; 
+                if (!audio) return; 
+                
+                // [优化] 移动端禁止 cloneNode，直接重置进度播放，消除卡顿
+                audio.volume = sfxVolume;
+                audio.currentTime = 0; 
+                audio.play().catch(() => {}); // 忽略交互报错
             }, [sfxVolume]);
 
 // Keyboard
@@ -2454,9 +2442,8 @@ if (!freeGame.active) {
                         {/* [新增] 背景呼吸光效层 */}
                         <div className="bg-breathing-light"></div>
 
-                        <img src="./images/man.png" alt="Character Left" className={`hidden lg:block absolute left-[2%] xl:left-[2%] top-1/2 -translate-y-1/2 h-[90%] max-h-[900px] w-auto object-contain z-10 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 hover:scale-105 ${isManCasting ? 'animate-character-cast' : ''}`} />
-                        <img src="./images/woman.png" alt="Character Right" className={`hidden lg:block absolute right-[2%] xl:right-[4%] top-1/2 -translate-y-1/2 h-[90%] max-h-[900px] w-auto object-contain z-10 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 hover:scale-105 ${isWomanCasting ? 'animate-character-cast' : ''}`} style={{ transform: 'translateY(-50%)' }} />
-
+                       <img src="./images/man.png" alt="Character Left" className={`hidden landscape:block absolute left-0 lg:left-[2%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isManCasting ? 'animate-character-cast' : ''}`} />
+                        <img src="./images/woman.png" alt="Character Right" className={`hidden landscape:block absolute right-0 lg:right-[2%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isWomanCasting ? 'animate-character-cast' : ''}`} style={{ transform: 'translateY(-50%)' }} />
                         {/* FG Info */}
                         {freeGame.active && (
                             <div className="absolute left-24 top-1/2 -translate-y-1/2 z-40 hidden lg:block animate-bounce-drop pointer-events-none">
@@ -2470,8 +2457,7 @@ if (!freeGame.active) {
 
                         {/* Buy Button */}
                         {!freeGame.active && !isSpinning && (<div className="absolute left-2 top-2 z-30 lg:hidden landscape:hidden"><button onClick={() => { playSound('click'); setShowBuyModal(true); }} className="bg-[#b45309] border border-[#fbbf24] text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1"><ShoppingCart size={12} /> BUY</button></div>)}
-                        {!freeGame.active && (<div className="hidden landscape:block absolute left-4 z-30"><button onClick={() => { playSound('click'); setShowBuyModal(true); }} disabled={isSpinning} className="flex flex-col items-center justify-center w-16 h-16 bg-gradient-to-b from-[#b45309] to-[#451a03] border-2 border-[#fbbf24] rounded-xl shadow-lg hover:scale-105 active:scale-95 transition-all group"><div className="text-sm font-egyptian-gold -mt-3 mb-1">BUY</div><ShoppingCart className="text-white w-6 h-6 group-hover:text-[#fbbf24] transition-colors" /></button></div>)}
-
+{!freeGame.active && (<div className="hidden landscape:block absolute left-4 z-30"><button onClick={() => { playSound('click'); setShowBuyModal(true); }} disabled={isSpinning} className="flex flex-col items-center justify-center w-16 h-16 bg-gradient-to-b from-[#b45309] to-[#451a03] border-2 border-[#fbbf24] rounded-xl shadow-lg hover:scale-105 active:scale-95 transition-all group"><div className="text-sm text-[#fde047] font-black drop-shadow-md -mt-3 mb-1">BUY</div><ShoppingCart className="text-white w-6 h-6 group-hover:text-[#fbbf24] transition-colors" /></button></div>)}
                         {/* Spin Controls */}
                         <div className="hidden landscape:flex flex-col gap-3 absolute right-4 top-1/2 -translate-y-1/2 z-50 items-center">
                             <button onClick={() => setAutoSpin(!autoSpin)} className={`w-10 h-10 rounded-full border flex items-center justify-center shadow-lg bg-black/60 backdrop-blur ${autoSpin ? 'border-emerald-500 text-emerald-400' : 'border-white/20 text-gray-400'}`}><RotateCw size={16} className={autoSpin ? 'animate-spin-btn' : ''} /></button>
@@ -2490,9 +2476,8 @@ if (!freeGame.active) {
 
 <div ref={topBarRef} className="relative z-20 w-full max-w-[95vw] md:max-w-[800px] h-10 md:h-16 mb-1 bg-black/60 border border-[#fbbf24]/30 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-sm transition-all"><div className={`text-3xl md:text-5xl font-black tracking-widest transition-all duration-200 ${lasers.length > 0 ? 'text-white scale-125 drop-shadow-[0_0_10px_white]' : 'text-[#fbbf24] drop-shadow-md'}`}>{uiState.displayWinText}</div></div>
 
-                        {/* [修復] 限制橫屏最大寬度，防止遮擋左右按鈕 */}
-                        <div className="relative w-full max-w-[95vw] md:max-w-[800px] aspect-[4/3] landscape:w-auto landscape:h-[85%] landscape:aspect-[16/10] landscape:max-w-[75vw] z-20 transition-all duration-300">
-                            
+                       {/* [修復] 限制橫屏最大寬度，防止遮擋左右按鈕 (桌面端解除限制) */}
+                        <div className="relative w-full max-w-[95vw] md:max-w-[800px] aspect-[4/3] landscape:w-auto landscape:h-[85%] landscape:aspect-[16/10] landscape:max-w-[65vw] lg:landscape:max-w-none z-20 transition-all duration-300">
                             {showFGTrigger && (<div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-yellow-500 to-yellow-800 drop-shadow-[0_0_20px_rgba(255,215,0,0.8)] animate-bounce-drop font-cinzel tracking-tighter text-center leading-tight">FREE<br />GAMES</div></div>)}
                             
                             {freeGame.active && (<div className="absolute -right-2 -top-10 z-50 w-16 h-16 bg-[#2d1b0e] border-2 border-rose-500 rounded-xl flex flex-col items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.8)] animate-bounce-drop rotate-3"><div className="absolute -top-2 bg-rose-600 text-white text-[8px] font-bold px-2 rounded-full border border-rose-400">TOTAL</div><span className="text-2xl font-black text-white drop-shadow-md">{freeGame.accMult}x</span></div>)}
@@ -2550,15 +2535,14 @@ if (!freeGame.active) {
                                                         return (
                                                             <div className="relative w-full h-full flex items-center justify-center p-1 group">
                                                                 <img src={orbImageStr} alt={`${val}x`} className="w-full h-full object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200 group-hover:scale-105" />
-                                                                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-egyptian-gold text-2xl md:text-6xl z-20 pointer-events-none pb-1 md:pb-2">{val}x</span>
+                                                                {/* [修改] 改为亮金色文字，增加发光效果 */}
+                                                                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#fde047] font-black text-2xl md:text-6xl z-20 pointer-events-none pb-1 md:pb-2 drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]" style={{ textShadow: '0 0 10px rgba(253, 224, 71, 0.5)' }}>{val}x</span>
                                                             </div>
                                                         );
                                                     })() : cell.id === 99 ? (
                                                         <div className="relative w-full h-full flex flex-col items-center justify-center p-1">
                                                             <img src={cell.icon} alt="Scatter" className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.6)]" />
-                                                            <div className="absolute bottom-0 w-full text-center">
-                                                                <span className="text-[10px] md:text-xs font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-yellow-600 drop-shadow-[0_2px_0_rgba(0,0,0,1)] tracking-wider font-cinzel block -mt-2">SCATTER</span>
-                                                            </div>
+                                                            {/* [修改] 已移除底部的 SCATTER 文字 */}
                                                         </div>
                                                     ) : ((() => {
                                                         const scale = cell.scale || 1;
@@ -2642,11 +2626,11 @@ if (!freeGame.active) {
             );
         }
         // --- [升级] 选桌大厅组件 (Filter & FG Detail) ---
+        // --- [修复] 选桌大厅组件 (Correct Version) ---
         function TableLobby({ tableCount, onSelectTable, user, onLogout }) {
             const [tables, setTables] = useState([]);
             const [selectedId, setSelectedId] = useState(null);
-            const [filter, setFilter] = useState('all'); // 'all' | 'empty'
-            const [isSidebarOpen, setSidebarOpen] = useState(false);
+            const [filter, setFilter] = useState('all'); // 玩家端只用 filter，不用 activeTab
 
             useEffect(() => {
                 const unsub = onSnapshot(collection(db, 'apps', APP_ID, 'tables'), (snapshot) => {
@@ -2680,36 +2664,20 @@ if (!freeGame.active) {
             const last1 = fgHist.length > 0 ? fgHist[fgHist.length - 1] : '-';
             const last2 = fgHist.length > 1 ? fgHist[fgHist.length - 2] : '-';
 
-return (
-                <div className="h-screen bg-[#0f0500] text-white font-noto flex flex-col lg:flex-row overflow-hidden">
-                    
-                    {/* [Mobile Header] 放在最外層，確保所有 Tab 都能看到 */}
-                    <div className="h-14 bg-[#1c1917] border-b border-white/10 flex items-center justify-between px-4 shrink-0 lg:hidden z-50 relative">
-                        <div className="flex items-center gap-2 text-[#fbbf24] font-cinzel font-bold text-lg"><Settings size={18}/> SETH ADMIN</div>
-                        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 text-white hover:bg-white/10 rounded">
-                            {isSidebarOpen ? <X size={20}/> : <Settings size={20}/>}
-                        </button>
-                    </div>
-
-                    {/* [Sidebar] 響應式設計: 桌面固定 / 手機滑出 */}
-                    <div className={`
-                        fixed inset-y-0 left-0 w-64 bg-[#1c1917] border-r border-white/10 flex flex-col z-40 shadow-2xl transition-transform duration-300
-                        lg:static lg:transform-none
-                        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-                    `}>
-                        <div className="h-16 hidden lg:flex items-center gap-2 px-6 border-b border-white/10 text-[#fbbf24] font-cinzel font-bold text-xl"><Settings className="text-[#fbbf24]" /> SETH ADMIN</div>
-                        <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scroll">
-                            <button onClick={() => { setActiveTab('monitor'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'monitor' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Activity size={18} /> 即時監控 (Live)</button>
-                            <button onClick={() => { setActiveTab('config'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'config' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><RotateCw size={18} /> 機率與桌台</button>
-                            <button onClick={() => { setActiveTab('users'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'users' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Users size={18} /> 玩家管理</button>
-                            <button onClick={() => { setActiveTab('data'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'data' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Database size={18} /> 數據維護</button>
-                        </nav>
-                        <div className="p-4 border-t border-white/10"><button onClick={onLogout} className="w-full flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors"><LogOut size={16} /> 登出系統</button></div>
-                    </div>
-
-                    {/* [Main Content] */}
-                    <div className="flex-grow overflow-y-auto custom-scroll p-4 lg:p-8 bg-[#0a0a0a] relative" onClick={() => isSidebarOpen && setSidebarOpen(false)}>
-                        
+            return (
+                <div className="min-h-screen bg-[#0f0500] text-white font-noto flex flex-col animate-in fade-in relative">
+                    {/* Header */}
+                    <div className="h-16 bg-[#1c1917] border-b border-[#fbbf24]/30 flex items-center justify-between px-6 shrink-0 z-10 shadow-xl">
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-2"><span className="text-2xl font-cinzel font-bold text-[#fbbf24]">SETH II</span><span className="bg-[#fbbf24]/20 text-[#fbbf24] px-2 py-0.5 rounded text-xs font-bold">LOBBY</span></div>
+                            
+                            {/* 桌台筛选按钮 */}
+                            <div className="flex bg-black/50 p-1 rounded-lg border border-white/10">
+                                <button onClick={() => setFilter('all')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${filter === 'all' ? 'bg-[#fbbf24] text-black' : 'text-gray-400 hover:text-white'}`}>全部桌台</button>
+                                <button onClick={() => setFilter('empty')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${filter === 'empty' ? 'bg-[#fbbf24] text-black' : 'text-gray-400 hover:text-white'}`}>空桌</button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4"><div className="flex flex-col items-end mr-4"><span className="text-sm font-bold text-gray-300">{user.name}</span><span className="text-xs font-mono text-[#fbbf24]">${Math.floor(user.balance).toLocaleString()}</span></div><button onClick={onLogout} className="bg-white/5 hover:bg-white/10 p-2 rounded-full transition-colors text-gray-400 hover:text-white"><LogOut size={20} /></button></div>
                     </div>
 
                     {/* Table Grid */}
@@ -2739,11 +2707,10 @@ return (
                         </div>
                     </div>
 
-                    {/* [升级] 底部详情状态栏 (含详细 FG 数据) */}
+                    {/* 底部详情状态栏 */}
                     <div className={`fixed bottom-0 left-0 w-full bg-[#1c1917] border-t border-[#fbbf24] p-4 transition-transform duration-300 z-50 shadow-[0_-5px_30px_rgba(0,0,0,0.8)] ${selectedId ? 'translate-y-0' : 'translate-y-full'}`}>
                         {activeTable && (
                             <div className="max-w-7xl mx-auto flex flex-col xl:flex-row items-center justify-between gap-4 xl:gap-8">
-                                {/* 左侧：桌号与基础 RTP */}
                                 <div className="flex items-center gap-6 shrink-0">
                                     <div className="text-5xl font-cinzel font-bold text-[#fbbf24] drop-shadow-md">#{activeTable.id}</div>
                                     <div className="h-12 w-px bg-white/10 hidden md:block"></div>
@@ -2753,7 +2720,6 @@ return (
                                     </div>
                                 </div>
 
-                                {/* 中间：FG 详细统计 (新增) */}
                                 <div className="flex-grow bg-white/5 rounded-lg border border-white/10 p-2 flex items-center justify-around w-full xl:w-auto">
                                     <div className="text-center">
                                         <div className="text-[9px] text-purple-400 uppercase font-bold">平均 FG 機率</div>
@@ -2761,7 +2727,7 @@ return (
                                     </div>
                                     <div className="h-8 w-px bg-white/10"></div>
                                     <div className="text-center">
-                                        <div className="text-[9px] text-gray-500 uppercase font-bold">上1次 / 上2次 (間隔)</div>
+                                        <div className="text-[9px] text-gray-500 uppercase font-bold">上1次 / 上2次</div>
                                         <div className="text-lg font-mono text-gray-300">{last1} / {last2}</div>
                                     </div>
                                     <div className="h-8 w-px bg-white/10"></div>
@@ -2771,7 +2737,6 @@ return (
                                     </div>
                                 </div>
                                 
-                                {/* 右侧：进入按钮 */}
                                 <button 
                                     onClick={() => {
                                         if (isRealOccupied && activeTable.currentUserId !== user.id) {
