@@ -644,41 +644,34 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
 
         // [修改] 將權重預設值改為百分比格式 (總和建議為 100)
         const DEFAULT_CONFIG = {
-            tableCount: 12,            // [新增] 默认开放桌台数量
-            emptySpinProbability: 0.2, // 強制空轉率
-            smashProbability: 0.3,     // 砸球機率
+            tableCount: 12,
+            emptySpinProbability: 0.2,
+            smashProbability: 0.3,
+            cascadeProbability: 0.5, // [新增] 連消機率
 
-            // 符號出現機率 (總和 100%)
-            // ID 1-5 (低分): 各 15%
-            // ID 6-7 (中分): 各 8%
-            // ID 8-9 (高分): 各 3.5%
-            // ID 99 (Scatter): 2%
-            // ID 88 (倍數球): 已移除，由砸球邏輯控制
             symbolWeights: {
                 1: 15, 2: 15, 3: 15, 4: 15, 5: 15,
-                6: 8, 7: 8, 8: 3.5, 9: 3.5,
-                99: 2
+                6: 8, 7: 8, 8: 3.5, 9: 3.5, 99: 2
             },
 
-           // [新版] 倍數層級權重 (七級精細控制)
             multiplierTierWeights: {
-                tier1: 62,  // T1 (最低): 1-5倍
-                tier2: 18,  // T2 (低): 6-10倍
-                tier3: 10,  // T3 (中): 15-30倍
-                tier4: 5,   // T4 (中高): 35-50倍
-                tier5: 3,   // T5 (高): 60-100倍
-                tier6: 1.5, // T6 (傳說): 150-300倍
-                tier7: 0.5  // T7 (神話): 350-500倍
+                tier1: 62, tier2: 18, tier3: 10, tier4: 5,
+                tier5: 3, tier6: 1.5, tier7: 0.5
             },
             
-            // [新增] 砸球數量機率權重 (總和建議 100)
             smashQtyWeights: {
-                1: 50,  // 1顆球
-                2: 25,  // 2顆球
-                3: 15,  // 3顆球
-                4: 6,   // 4顆球
-                5: 3,   // 5顆球
-                6: 1    // 6顆球
+                1: 50, 2: 25, 3: 15, 4: 6, 5: 3, 6: 1
+            },
+
+            // [新增] 內部權重池 (您要求的結構)
+            multiplierInternalWeights: {
+                tier1: [{val:1, weight:60}, {val:2, weight:50}, {val:3, weight:40}, {val:4, weight:30}, {val:5, weight:15}],
+                tier2: [{val:6, weight:25}, {val:7, weight:15}, {val:8, weight:10}, {val:9, weight:5}, {val:10, weight:2}],
+                tier3: [{val:15, weight:35}, {val:20, weight:25}, {val:25, weight:15}, {val:30, weight:10}],
+                tier4: [{val:35, weight:25}, {val:40, weight:15}, {val:50, weight:5}],
+                tier5: [{val:60, weight:40}, {val:70, weight:25}, {val:80, weight:20}, {val:90, weight:10}, {val:100, weight:5}],
+                tier6: [{val:150, weight:40}, {val:200, weight:25}, {val:250, weight:15}, {val:300, weight:10}],
+                tier7: [{val:350, weight:50}, {val:400, weight:30}, {val:450, weight:10}, {val:500, weight:5}]
             }
         };
 
@@ -695,7 +688,6 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
 
         // [新增] 輔助函數：根據層級權重 + 內部權重抽取倍數
         const getRandomMultiplierSmart = (cfg) => {
-            // 1. 先決定層級 (Tier)
             const tierWeights = cfg.multiplierTierWeights || DEFAULT_CONFIG.multiplierTierWeights;
             const totalTierW = Object.values(tierWeights).reduce((a, b) => a + Number(b), 0);
             let r = Math.random() * totalTierW;
@@ -706,17 +698,18 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                 if (r <= 0) { selectedTier = tier; break; }
             }
             
-            // 2. 在該層級內，根據內部權重決定具體數值
-            const pool = MULT_POOLS[selectedTier];
-            const totalInternalW = pool.reduce((a, item) => a + item.weight, 0);
+            // [修改] 從配置中讀取內部權重，如果沒有則使用預設
+            const pools = cfg.multiplierInternalWeights || DEFAULT_CONFIG.multiplierInternalWeights;
+            const pool = pools[selectedTier] || pools['tier1']; // Fallback
+
+            const totalInternalW = pool.reduce((a, item) => a + Number(item.weight), 0);
             let r2 = Math.random() * totalInternalW;
             let selectedVal = pool[0].val;
 
             for (const item of pool) {
-                r2 -= item.weight;
+                r2 -= Number(item.weight);
                 if (r2 <= 0) { selectedVal = item.val; break; }
             }
-
             return selectedVal;
         };
 
@@ -3149,8 +3142,22 @@ const smartWait = (ms, isFastMode = false) => {
                 onUpdateConfig({ ...config, symbolWeights: newWeights });
             };
 
-            const handleCreate = () => { if (!newUser.id || !newUser.name || !newUser.password) { alert("請填寫完整資料"); return; } onCreateUser(newUser); setNewUser({ id: '', name: '', password: '', balance: 10000 }); };
+const handleCreate = () => { 
+                if (!newUser.id || !newUser.name || !newUser.password) { alert("請填寫完整資料"); return; } 
+                onCreateUser(newUser); setNewUser({ id: '', name: '', password: '', balance: 10000 }); 
+            };
 
+            // [新增] 內部權重變更處理
+            const handleInternalWeightChange = (tier, index, newWeight) => {
+                const newInternal = { ...localConfig.multiplierInternalWeights };
+                // Deep copy 防止修改原始引用
+                newInternal[tier] = [...newInternal[tier]];
+                newInternal[tier][index] = { ...newInternal[tier][index], weight: Number(newWeight) };
+                
+                const newCfg = { ...localConfig, multiplierInternalWeights: newInternal };
+                setLocalConfig(newCfg); 
+                onUpdateConfig(newCfg); 
+            };
             // [Helper] 符號顏色映射 (用於圖形監控)
             const getSymbolColor = (id) => {
                 if (id === 99) return 'bg-yellow-500 border-yellow-300 text-black font-black shadow-[0_0_5px_gold]';
@@ -3396,6 +3403,36 @@ const smartWait = (ms, isFastMode = false) => {
                                             </>
                                         );
                                     })()}
+                                </div>
+                                {/* [新增] 4. 內部權重設定 */}
+                                <div className="bg-[#1c1917] p-6 rounded-lg border border-blue-900/30">
+                                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-400 border-b border-white/10 pb-2"><Settings /> 倍數球內部權重 (Internal Weights)</h2>
+                                    <p className="text-xs text-gray-500 mb-4">* 設定每個層級內，特定倍數出現的相對權重 (Weight)。數值越高越容易出現。</p>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {Object.entries(localConfig.multiplierInternalWeights || {}).map(([tier, items]) => (
+                                            <div key={tier} className="bg-black/30 p-3 rounded border border-white/5">
+                                                <div className="text-sm font-bold text-gray-300 mb-2 uppercase border-b border-white/5 pb-1 flex justify-between">
+                                                    <span>{tier}</span>
+                                                    <span className="text-[10px] text-gray-500">Value : Weight</span>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    {items.map((item, idx) => (
+                                                        <div key={`${tier}-${item.val}`} className="flex items-center gap-2">
+                                                            <div className="w-12 text-right font-mono font-bold text-[#fbbf24] text-xs">{item.val}x</div>
+                                                            <div className="text-gray-600 text-xs">:</div>
+                                                            <input 
+                                                                type="number" 
+                                                                value={item.weight} 
+                                                                onChange={(e) => handleInternalWeightChange(tier, idx, e.target.value)}
+                                                                className="flex-grow bg-black border border-white/10 rounded px-2 py-1 text-xs font-mono text-white focus:border-blue-500 outline-none"
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 {/* --- 第二部分：遊戲節奏控制 (RTP) --- */}
@@ -3721,8 +3758,17 @@ const smartWait = (ms, isFastMode = false) => {
                 }, (error) => { if (error.code === 'permission-denied') setPermissionError(true); });
 
                 const configRef = doc(db, 'apps', APP_ID, COL_CONFIG, 'main');
-                const unsubConfig = onSnapshot(configRef, (docSnap) => { if (docSnap.exists()) { setConfigData(docSnap.data()); } else { setDoc(configRef, DEFAULT_CONFIG); } }, (error) => { if (error.code === 'permission-denied') setPermissionError(true); });
-                return () => { unsubUsers(); unsubConfig(); };
+const unsubConfig = onSnapshot(configRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        // [關鍵修復]：將遠端數據與默認數據合併。
+                        // 這確保了如果資料庫中缺少新添加的欄位，本地狀態會使用 DEFAULT_CONFIG 中的值。
+                        setConfigData({ ...DEFAULT_CONFIG, ...docSnap.data() });
+                    } else {
+                        setDoc(configRef, DEFAULT_CONFIG);
+                        setConfigData(DEFAULT_CONFIG);
+                    }
+                });
+             return () => { unsubUsers(); unsubConfig(); };
             }, [userAuth]);
 
             const handleCreateUser = async (newUser) => { if (usersData.some(u => u.id === newUser.id)) { alert("帳號已存在"); return; } await setDoc(doc(db, 'apps', APP_ID, COL_USERS, newUser.id), { ...newUser, role: 'player' }); alert("創建成功"); };
