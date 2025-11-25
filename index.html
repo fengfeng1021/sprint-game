@@ -1065,7 +1065,8 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             }
 
             if (spinSequence.length > 0 && Math.random() < smashRate && candidates.length > 0) {
-                let count = getSmashCount(); 
+                // [修正點 1] 這裡必須傳入 config
+                let count = getSmashCount(config);
                 count = Math.min(count, candidates.length);
                 for(let i=0; i<count; i++) {
                     const idx = Math.floor(Math.random() * candidates.length);
@@ -1095,7 +1096,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                         }
                     }
                     if (Math.random() < smashRate && loopCandidates.length > 0) {
-                        let count = getSmashCount();
+                        let count = getSmashCount(config);
                         count = Math.min(count, loopCandidates.length);
                         for(let i=0; i<count; i++) {
                             const idx = Math.floor(Math.random() * loopCandidates.length);
@@ -3119,9 +3120,13 @@ const smartWait = (ms, isFastMode = false) => {
             const [activeTab, setActiveTab] = useState('monitor');
             const [newUser, setNewUser] = useState({ id: '', name: '', password: '', balance: 10000 });
             const [localWeights, setLocalWeights] = useState(config.symbolWeights || DEFAULT_CONFIG.symbolWeights);
+            // [修復] 這裡補上缺失的 localConfig 狀態宣告
+            const [localConfig, setLocalConfig] = useState(config);
             const [tables, setTables] = useState([]);
 
             useEffect(() => { if (config.symbolWeights) setLocalWeights(config.symbolWeights); }, [config]);
+            // [修復] 這裡補上同步邏輯，當父層 config 更新時同步到 localConfig
+            useEffect(() => { setLocalConfig(config); }, [config]);
             
             // [Monitor] 實時監聽所有桌台
             useEffect(() => {
