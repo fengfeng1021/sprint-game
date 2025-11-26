@@ -50,9 +50,9 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
     const deck = logic.fullDeck;
 
     // 音频 Refs
-    const audioBgm = useRef(new Audio('./sound/bgm.mp3'));
-    const audioScramble = useRef(new Audio('./sound/sprint.mp3'));
-    const audioWin = useRef(new Audio('./sound/clear.mp3'));
+    const audioBgm = useRef(new Audio('/sound/bgm.mp3'));
+    const audioScramble = useRef(new Audio('/sound/sprint.mp3'));
+    const audioWin = useRef(new Audio('/sound/clear.mp3'));
     
     // 初始化音频
     useEffect(() => {

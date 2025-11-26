@@ -1401,7 +1401,9 @@ const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
 
             // [Audio Pool] 初始化音频池 (每种音效预加载 5 个实例，无需运行时创建，零开销)
             useEffect(() => {
-const soundFiles = { 'spin': './sound/sprint.mp3', 'win': './sound/clear.mp3', 'man': './sound/man.mp3', 'woman': './sound/woman.mp3', 'drop': './sound/sprint.mp3', 'bigwin': './sound/clear.mp3', 'click': './sound/sprint.mp3' };                Object.entries(soundFiles).forEach(([key, src]) => {
+const soundFiles = { 'spin': '/sound/sprint.mp3', 'win': '/sound/clear.mp3', 'man': '/sound/man.mp3', 'woman': '/sound/woman.mp3', 'drop': '/sound/sprint.mp3', 'bigwin': '/sound/clear.mp3', 'click': '/sound/sprint.mp3' }; 
+
+Object.entries(soundFiles).forEach(([key, src]) => {
                     audioPool.current[key] = [];
                     for(let i=0; i<5; i++) { // 预创建5个替身
                         const a = new Audio(src); a.preload = 'auto'; a.volume = sfxVolume;
@@ -2389,7 +2391,7 @@ const smartWait = (ms, isFastMode = false) => {
                     <style>{`@keyframes laserShoot { 0% { stroke-dasharray: 0, 1000; stroke-dashoffset: 0; opacity: 0.8; } 50% { opacity: 1; stroke-width: 8; } 100% { stroke-dasharray: 1000, 0; stroke-dashoffset: 0; opacity: 0; stroke-width: 2; } } .animate-laser-shot { animation: laserShoot 0.6s ease-out forwards; }`}</style>
 
                     {/* Background Music */}
-                    <audio ref={bgmRef} loop src="./sound/bgm.MP3" />
+                    <audio ref={bgmRef} loop src="/sound/bgm.MP3" />
 
                 </div>
             );
