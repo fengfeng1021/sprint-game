@@ -1,0 +1,3350 @@
+import React, { useState, useEffect, useRef, useCallback } from 'https://esm.sh/react@18.2.0';
+import { 
+    Settings, Play, Plus, Minus, RotateCw, X, ShoppingCart, 
+    Trophy, Activity, BarChart2, ChevronsRight, Volume2, VolumeX, 
+    LogOut, Loader2, Smartphone, Coins, Flame, Lock, Upload, Download, Terminal,
+    Users, Database, RefreshCw, PlusCircle, Trash2
+} from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
+
+import { 
+    collection, doc, setDoc, onSnapshot, updateDoc, increment, getDoc 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// [補回 spawnCoins]
+const spawnCoins = (amount = 20) => {
+    const body = document.body;
+    for (let i = 0; i < amount; i++) {
+        const coin = document.createElement('div');
+        coin.className = 'coin-particle';
+        const x = Math.random() * 100; 
+        const duration = Math.random() * 2 + 2; 
+        const delay = Math.random() * 0.5; 
+        coin.style.left = `${x}vw`;
+        coin.style.setProperty('--duration', `${duration}s`);
+        coin.style.setProperty('--delay', `${delay}s`);
+        body.appendChild(coin);
+        setTimeout(() => coin.remove(), (duration + delay + 1) * 1000);
+    }
+};
+
+// =================================================================
+        const ROWS = 5;
+        const COLS = 6;
+
+        // [修改] 符號定義：添加 scale 屬性來控制個別圖片大小
+        const SYMBOLS_DEF = [
+            // ID 99: Scatter (本身已有特殊渲染，這裡的 scale 影響不大，但可以加)
+            { id: 99, type: 'scatter', icon: './images/10.png', name: 'Scatter', scale: 1 },
+
+            // ID 88: 倍數球 (特殊渲染，忽略 scale)
+            { id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier' },
+
+            // 普通符號範例：
+            // 讓高賠率的符號稍微大一點，低賠率的小一點
+            { id: 9, type: 'normal', icon: './images/9.png', payout: { 12: 50, 10: 25, 8: 10 }, name: 'Eye', scale: 1 },
+            { id: 8, type: 'normal', icon: './images/8.png', payout: { 12: 25, 10: 10, 8: 2.5 }, name: 'Snake', scale: 1 },
+            { id: 7, type: 'normal', icon: './images/7.png', payout: { 12: 15, 10: 5, 8: 2 }, name: 'Bow', scale: 1 },
+            { id: 6, type: 'normal', icon: './images/6.png', payout: { 12: 12, 10: 2, 8: 1.5 }, name: 'Blade', scale: 1 }, // 默認 1.0
+            { id: 5, type: 'normal', icon: './images/5.png', payout: { 12: 10, 10: 1.5, 8: 1 }, name: 'Gold', scale: 0.7 },
+            { id: 4, type: 'normal', icon: './images/4.png', payout: { 12: 8, 10: 1.2, 8: 0.8 }, name: 'Red', scale: 0.7 }, // 稍小
+            { id: 3, type: 'normal', icon: './images/3.png', payout: { 12: 5, 10: 1, 8: 0.5 }, name: 'Purple', scale: 0.7 },
+            { id: 2, type: 'normal', icon: './images/2.png', payout: { 12: 4, 10: 0.9, 8: 0.4 }, name: 'Blue', scale: 0.7 },
+            { id: 1, type: 'normal', icon: './images/1.png', payout: { 12: 2, 10: 0.75, 8: 0.25 }, name: 'Green', scale: 0.7 }, // 縮小
+        ];
+
+        // [修改] 將權重預設值改為百分比格式 (總和建議為 100)
+        const DEFAULT_CONFIG = {
+            tableCount: 12,
+            emptySpinProbability: 0.2,
+            smashProbability: 0.3,
+            cascadeProbability: 0.5, // [新增] 連消機率
+
+            symbolWeights: {
+                1: 15, 2: 15, 3: 15, 4: 15, 5: 15,
+                6: 8, 7: 8, 8: 3.5, 9: 3.5, 99: 2
+            },
+
+            multiplierTierWeights: {
+                tier1: 62, tier2: 18, tier3: 10, tier4: 5,
+                tier5: 3, tier6: 1.5, tier7: 0.5
+            },
+            
+            smashQtyWeights: {
+                1: 50, 2: 25, 3: 15, 4: 6, 5: 3, 6: 1
+            },
+
+            // [新增] 內部權重池 (您要求的結構)
+            multiplierInternalWeights: {
+                // 修改前: [{val:1, weight:60}, {val:2, weight:50}, ...]
+                // 修改後 (刪除 1x):
+                tier1: [{val:2, weight:50}, {val:3, weight:40}, {val:4, weight:30}, {val:5, weight:15}],
+                
+                tier2: [{val:6, weight:25}, {val:7, weight:15}, {val:8, weight:10}, {val:9, weight:5}, {val:10, weight:2}],
+                tier3: [{val:15, weight:35}, {val:20, weight:25}, {val:25, weight:15}, {val:30, weight:10}],
+                tier4: [{val:35, weight:25}, {val:40, weight:15}, {val:50, weight:5}],
+                tier5: [{val:60, weight:40}, {val:70, weight:25}, {val:80, weight:20}, {val:90, weight:10}, {val:100, weight:5}],
+                tier6: [{val:150, weight:40}, {val:200, weight:25}, {val:250, weight:15}, {val:300, weight:10}],
+                tier7: [{val:350, weight:50}, {val:400, weight:30}, {val:450, weight:10}, {val:500, weight:5}]
+            }
+        };
+
+        // [新增] 倍數定義池 (帶內部權重)
+        const MULT_POOLS = {
+            // 修改後 (刪除 1x):
+            tier1: [{val:2, weight:50}, {val:3, weight:40}, {val:4, weight:30}, {val:5, weight:15}],
+            
+            tier2: [{val:6, weight:25}, {val:7, weight:15}, {val:8, weight:10}, {val:9, weight:5}, {val:10, weight:2}],
+            tier3: [{val:15, weight:35}, {val:20, weight:25}, {val:25, weight:15}, {val:30, weight:10}],
+            tier4: [{val:35, weight:25}, {val:40, weight:15}, {val:50, weight:5}],
+            tier5: [{val:60, weight:40}, {val:70, weight:25}, {val:80, weight:20}, {val:90, weight:10}, {val:100, weight:5}],
+            tier6: [{val:150, weight:40}, {val:200, weight:25}, {val:250, weight:15}, {val:300, weight:10}],
+            tier7: [{val:350, weight:50}, {val:400, weight:30}, {val:450, weight:10}, {val:500, weight:5}]
+        };
+        const getRandomMultiplierSmart = (cfg) => {
+            const tierWeights = cfg.multiplierTierWeights || DEFAULT_CONFIG.multiplierTierWeights;
+            const totalTierW = Object.values(tierWeights).reduce((a, b) => a + Number(b), 0);
+            let r = Math.random() * totalTierW;
+            let selectedTier = 'tier1';
+            
+            for (const [tier, w] of Object.entries(tierWeights)) {
+                r -= Number(w);
+                if (r <= 0) { selectedTier = tier; break; }
+            }
+            
+            // [修改] 從配置中讀取內部權重
+            const pools = cfg.multiplierInternalWeights || DEFAULT_CONFIG.multiplierInternalWeights;
+            const rawPool = pools[selectedTier] || pools['tier1']; 
+
+            // ★★★【核心修復】在此處強制過濾掉 1倍球 (val: 1) ★★★
+            // 這樣就算資料庫裡還有髒數據，遊戲運算時也會直接無視它
+            const pool = rawPool.filter(item => item.val !== 1);
+
+            // 防呆：如果過濾後空了(理論上不會發生)，就給個默認值
+            if (pool.length === 0) return 2; 
+
+            const totalInternalW = pool.reduce((a, item) => a + Number(item.weight), 0);
+            let r2 = Math.random() * totalInternalW;
+            let selectedVal = pool[0].val;
+
+            for (const item of pool) {
+                r2 -= Number(item.weight);
+                if (r2 <= 0) { selectedVal = item.val; break; }
+            }
+            return selectedVal;
+        };
+
+        // [新增] 輔助函數：決定砸球數量 (讀取後台配置)
+        const getSmashCount = (cfg) => {
+            const weights = cfg.smashQtyWeights || DEFAULT_CONFIG.smashQtyWeights;
+            const totalW = Object.values(weights).reduce((a, b) => a + Number(b), 0);
+            let r = Math.random() * totalW;
+            let count = 1;
+            
+            // 權重遍歷
+            for (const [qty, w] of Object.entries(weights)) {
+                r -= Number(w);
+                if (r <= 0) { count = Number(qty); break; }
+            }
+            return count;
+        };
+
+        const DEFAULT_USERS = [
+            { id: 'admin', name: '系統管理員', password: 'admin', role: 'admin', balance: 0 },
+            { id: 'player1', name: '測試玩家一號', password: '1234', role: 'player', balance: 50000 },
+        ];
+
+        // ---------------------------------------------------------
+        // 核心邏輯重整：權重與盤面生成 (已修復重複宣告問題)
+        // ---------------------------------------------------------
+
+        // 1. 讀取符號權重
+        const getWeightsFromConfig = (cfg) => {
+            const c = cfg || DEFAULT_CONFIG;
+            const weights = [];
+            const sourceWeights = c.symbolWeights || DEFAULT_CONFIG.symbolWeights;
+            for (const [idStr, weight] of Object.entries(sourceWeights)) {
+                const id = Number(idStr);
+                if (id === 88) continue;
+                weights.push({ id: id, weight: Number(weight) });
+            }
+            if (weights.length === 0) return [{ id: 1, weight: 100 }];
+            return weights;
+        };
+
+        // 2. 讀取倍數權重
+        const getMultWeightsFromConfig = (cfg) => {
+            const c = cfg || DEFAULT_CONFIG;
+            if (!c.multiplierWeights) {
+                return Object.entries(DEFAULT_CONFIG.multiplierWeights).map(([val, weight]) => ({ val: Number(val), weight }));
+            }
+            return Object.entries(c.multiplierWeights).map(([val, weight]) => ({ val: Number(val), weight: Number(weight) }));
+        };
+
+        // 3. 獲取隨機符號
+        const getRandomSymbolData = (currentConfig) => {
+            const weights = getWeightsFromConfig(currentConfig);
+            const totalWeight = weights.reduce((acc, w) => acc + w.weight, 0);
+            let random = Math.random() * totalWeight;
+            let selectedId = 1;
+            for (let w of weights) {
+                random -= w.weight;
+                if (random <= 0) { selectedId = w.id; break; }
+            }
+            const base = SYMBOLS_DEF.find(s => s.id === selectedId) || SYMBOLS_DEF[0];
+            return { ...base };
+        };
+
+        // 新增: 平均分布符號
+        const getUniformSymbol = () => {
+            const validSymbols = SYMBOLS_DEF.filter(s => s.id !== 88);
+            const randIndex = Math.floor(Math.random() * validSymbols.length);
+            return { ...validSymbols[randIndex] };
+        };
+
+        // 4. 生成必輸盤面
+        const generateLosingGrid = (cfg) => {
+            const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+            const counts = {};
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    let sym;
+                    let isValid = false;
+                    let attempts = 0;
+                    while (attempts < 20) {
+                        sym = getUniformSymbol();
+                        const id = sym.id;
+                        const currentCount = counts[id] || 0;
+                        let countLimit = (id === 99) ? 2 : 7;
+                        const left = c > 0 ? grid[r][c - 1] : null;
+                        const top = r > 0 ? grid[r - 1][c] : null;
+                        if (currentCount < countLimit) {
+                            if ((left && left.id === id) || (top && top.id === id)) { isValid = false; } 
+                            else { isValid = true; }
+                        }
+                        if (isValid) break;
+                        attempts++;
+                    }
+                    if (!isValid) {
+                        let safeId = 1;
+                        const leftId = c > 0 ? grid[r][c - 1]?.id : -1;
+                        const topId = r > 0 ? grid[r - 1][c]?.id : -1;
+                        while (safeId === leftId || safeId === topId) safeId++;
+                        const base = SYMBOLS_DEF.find(s => s.id === safeId) || SYMBOLS_DEF[0];
+                        sym = { ...base };
+                    }
+                    counts[sym.id] = (counts[sym.id] || 0) + 1;
+                    grid[r][c] = { ...sym, isNew: true, key: Math.random().toString(36) };
+                }
+            }
+            return grid;
+        };
+
+        // 5. 生成必勝盤面
+        const generateWinningGrid = (cfg, isFG = false) => {
+            const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+            const usedPos = new Set();
+            let targetSym = null;
+            do { targetSym = getRandomSymbolData(cfg); } while (!targetSym || targetSym.id === 88);
+            
+            const isWinFG = (targetSym.id === 99);
+            const targetId = targetSym.id;
+            let winCount = isWinFG ? 4 : (8 + Math.floor(Math.random() * 2));
+
+            let placed = 0;
+            while (placed < winCount) {
+                const r = Math.floor(Math.random() * ROWS);
+                const c = Math.floor(Math.random() * COLS);
+                const key = `${r}-${c}`;
+                if (!usedPos.has(key)) {
+                    grid[r][c] = { ...targetSym, isNew: true, key: Math.random().toString(36) };
+                    usedPos.add(key);
+                    placed++;
+                }
+            }
+
+            const currentCounts = {};
+            currentCounts[targetId] = winCount;
+            let scatterCount = isWinFG ? 4 : 0;
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (!grid[r][c]) {
+                        let filler;
+                        let subSafety = 0;
+                        do {
+                            filler = getRandomSymbolData(cfg);
+                            subSafety++;
+                            if (filler.id === 88 || filler.id === targetId) { filler = null; continue; }
+                            const limit = (filler.id === 99) ? (isWinFG ? 4 : 2) : 7;
+                            if ((currentCounts[filler.id] || 0) >= limit) { filler = null; continue; }
+                        } while (!filler && subSafety < 15);
+
+                        if (!filler) {
+                            let safeId = 1; if (targetId === 1) safeId = 2;
+                            filler = { ...SYMBOLS_DEF.find(s => s.id === safeId) };
+                        }
+                        if (filler.id === 99) scatterCount++;
+                        currentCounts[filler.id] = (currentCounts[filler.id] || 0) + 1;
+                        grid[r][c] = { ...filler, isNew: true, key: Math.random().toString(36) };
+                    }
+                }
+            }
+            return grid;
+        };
+
+        // 6. 純隨機生成
+        const generateGridData = (cfg) => {
+            let scatterCount = 0;
+            return Array(ROWS).fill(null).map(() =>
+                Array(COLS).fill(null).map(() => {
+                    let sym;
+                    let safety = 0;
+                    do {
+                        sym = getRandomSymbolData(cfg);
+                        if (sym.id === 88) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
+                        if (sym.id === 99 && scatterCount >= 4) sym = null;
+                        safety++;
+                    } while (!sym && safety < 10);
+                    if (!sym) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
+                    if (sym.id === 99) scatterCount++;
+                    return { ...sym, isNew: true, key: Math.random().toString(36) };
+                })
+            );
+        };
+
+        // 7. God Mode 生成
+        const generateRiggedGrid = (cfg, type) => {
+            let grid = generateGridData(cfg);
+            if (type === 'SCATTER') {
+                let positions = [];
+                while (positions.length < 4) {
+                    let r = Math.floor(Math.random() * ROWS);
+                    let c = Math.floor(Math.random() * COLS);
+                    if (!positions.some(p => p.r === r && p.c === c)) positions.push({ r, c });
+                }
+                positions.forEach(p => {
+                    grid[p.r][p.c] = { ...SYMBOLS_DEF.find(s => s.id === 99) };
+                });
+            } else if (type === 'BIG_WIN') {
+                let count = 0;
+                const target = SYMBOLS_DEF.find(s => s.id === 9);
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (Math.random() > 0.4 && count < 12) {
+                            grid[r][c] = { ...target };
+                            count++;
+                        }
+                    }
+                }
+            }
+            return grid;
+        };
+
+        // =================================================================
+        // [關鍵修復] 核心運算區塊 (模擬器與遊戲共用) - 確保只有一份定義
+        // =================================================================
+
+        // [Core] 1. 生成劇本
+        const calculateSpinSequence = (config, cheat) => {
+            const sequence = [];
+            const usedIds = new Set();
+            let totalCascades = 0;
+            if (cheat && cheat.win !== undefined) {
+                if (!cheat.win) return []; 
+                if (cheat.cascades !== undefined && cheat.cascades !== null) {
+                    totalCascades = cheat.cascades;
+                } else {
+                    const prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
+                    while (Math.random() < prob && totalCascades < 20) { totalCascades++; prob *= 0.8; }
+                }
+            } else {
+                const emptyRate = config.emptySpinProbability || 0.2;
+                if (Math.random() < emptyRate) return []; 
+                // [修復] 讀取設定檔中的 cascadeProbability，如果沒有則預設 0.5
+                let prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.1;
+                while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 1; }
+            }
+
+            for (let i = 0; i <= totalCascades; i++) {
+                let sym;
+                let safe = 0;
+                do {
+                    sym = getRandomSymbolData(config);
+                    safe++;
+                    let isInvalid = false;
+                    if (sym.id === 88) isInvalid = true;
+                    if (usedIds.has(sym.id)) isInvalid = true;
+                    if (sym.id === 99 && i > 0) isInvalid = true; 
+                    if (sym.id > 9 && sym.id !== 99) isInvalid = true; 
+                    if (!isInvalid) break;
+                } while (safe < 20);
+                
+                if (sym.id === 88 || (sym.id === 99 && i > 0) || (sym.id > 9 && sym.id !== 99) || usedIds.has(sym.id)) {
+                    const available = [1,2,3,4,5,6,7,8,9].filter(id => !usedIds.has(id));
+                    if (available.length > 0) sym = { id: available[Math.floor(Math.random() * available.length)] };
+                    else sym = { id: 1 }; 
+                }
+                sequence.push(sym.id);
+                usedIds.add(sym.id);
+                if (sym.id === 99) break;
+            }
+            return sequence;
+        };
+
+        // [Core] 2. 生成種子盤面
+        const generateSeededGrid = (sequence, config, isFG = false) => {
+            const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+            const cells = [];
+            for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) cells.push({r,c});
+            const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+            shuffle(cells);
+
+            // A. 放置首局贏家
+            if (sequence.length > 0) {
+                const winId = sequence[0];
+                const count = (winId === 99) ? 4 : (8 + Math.floor(Math.random() * 2));
+                for(let i=0; i<count; i++) {
+                    if(cells.length === 0) break;
+                    const pos = cells.pop();
+                    grid[pos.r][pos.c] = { ...SYMBOLS_DEF.find(s => s.id === winId), key: Math.random().toString(36), isNew: true };
+                }
+            }
+            // B. 放置後續贏家
+            for (let i = 1; i < sequence.length; i++) {
+                const futureId = sequence[i];
+                const seedCount = 5 + Math.floor(Math.random() * 2);
+                for(let k=0; k<seedCount; k++) {
+                    if(cells.length === 0) break;
+                    const pos = cells.pop();
+                    grid[pos.r][pos.c] = { ...SYMBOLS_DEF.find(s => s.id === futureId), key: Math.random().toString(36), isNew: true };
+                }
+            }
+            // C. 填充剩餘
+            const bannedIds = new Set([...sequence, 88]); 
+            const currentCounts = {};
+            grid.flat().forEach(c => { if(c && c.id) currentCounts[c.id] = (currentCounts[c.id] || 0) + 1; });
+
+            while(cells.length > 0) {
+                const pos = cells.pop();
+                let sym = null;
+                let safe = 0;
+                do { 
+                    let candidate = getRandomSymbolData(config); 
+                    if (bannedIds.has(candidate.id) || candidate.id === 88) candidate = null;
+                    else {
+                        const cnt = currentCounts[candidate.id] || 0;
+                        const isScriptedFG = (sequence.length > 0 && sequence[0] === 99);
+                        if (candidate.id === 99 && !isScriptedFG && cnt >= 3) candidate = null;
+                        else if (candidate.id !== 99 && cnt >= 7) candidate = null;
+                    }
+                    if(candidate) sym = candidate;
+                    safe++;
+                } while(!sym && safe < 30);
+                if (!sym) sym = { ...SYMBOLS_DEF[0] };
+                currentCounts[sym.id] = (currentCounts[sym.id] || 0) + 1;
+                grid[pos.r][pos.c] = { ...sym, key: Math.random().toString(36), isNew: true };
+            }
+            return grid;
+        };
+
+        const getPayout = (id, count) => {
+            const s = SYMBOLS_DEF.find(sym => sym.id === id);
+            if (!s || !s.payout) return 0;
+            if (count >= 12) return s.payout[12];
+            if (count >= 10) return s.payout[10];
+            if (count >= 8) return s.payout[8];
+            return 0;
+        };
+
+        // [Core] 3. 核心邏輯純運算引擎 (模擬器與遊戲共用)
+        const calculateSpinResult = (config, bet, isFG, currentAccMult = 0) => {
+            // 1. 生成劇本
+            const spinSequence = calculateSpinSequence(config, null); 
+
+            // 2. 生成初始盤面
+            let grid = spinSequence.length > 0 
+                ? generateSeededGrid(spinSequence, config, isFG) 
+                : generateLosingGrid(config);
+
+            let roundWin = 0;
+            let loop = 0;
+            let active = true;
+            let smashHappenedInLoop1 = false;
+            let currentGrid = JSON.parse(JSON.stringify(grid)); // 深拷貝
+            
+            // 統計數據回傳用
+            let smashCount = 0;
+            let multsFound = [];
+
+            // --- 初始砸球邏輯 ---
+            const smashRate = config.smashProbability !== undefined ? config.smashProbability : 0.3;
+            let protectedIds = new Set(spinSequence);
+            let candidates = [];
+            for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+                if(currentGrid[r][c] && currentGrid[r][c].id <= 9 && !protectedIds.has(currentGrid[r][c].id)) {
+                    candidates.push({r,c});
+                }
+            }
+
+            if (spinSequence.length > 0 && Math.random() < smashRate && candidates.length > 0) {
+                // [修正點 1] 這裡必須傳入 config
+                let count = getSmashCount(config);
+                count = Math.min(count, candidates.length);
+                for(let i=0; i<count; i++) {
+                    const idx = Math.floor(Math.random() * candidates.length);
+                    const t = candidates[idx];
+                    candidates.splice(idx, 1);
+                    const val = getRandomMultiplierSmart(config); 
+                    currentGrid[t.r][t.c] = { id: 88, val: val, type: 'mult' };
+                    multsFound.push(val);
+                }
+                smashCount++;
+                smashHappenedInLoop1 = true;
+            }
+
+            // --- 消除循環 ---
+            while (active && loop < 20) {
+                loop++;
+
+                // A. 循環內砸球
+                if (!(loop === 1 && smashHappenedInLoop1)) {
+                    const currentTargetId = spinSequence[loop - 1];
+                    const futureTargetIds = spinSequence.slice(loop);
+                    const protectedIdsLoop = new Set([currentTargetId, ...futureTargetIds].filter(x => x));
+                    let loopCandidates = [];
+                    for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+                        if(currentGrid[r][c] && currentGrid[r][c].id <= 9 && !protectedIdsLoop.has(currentGrid[r][c].id)) {
+                            loopCandidates.push({r,c});
+                        }
+                    }
+                    if (Math.random() < smashRate && loopCandidates.length > 0) {
+                        let count = getSmashCount(config);
+                        count = Math.min(count, loopCandidates.length);
+                        for(let i=0; i<count; i++) {
+                            const idx = Math.floor(Math.random() * loopCandidates.length);
+                            const t = loopCandidates[idx];
+                            loopCandidates.splice(idx, 1);
+                            const val = getRandomMultiplierSmart(config);
+                            currentGrid[t.r][t.c] = { id: 88, val: val, type: 'mult' };
+                            multsFound.push(val);
+                        }
+                        smashCount++;
+                    }
+                }
+
+                // B. 消除結算
+                const counts = {};
+                currentGrid.flat().forEach(c => { if(c && c.type === 'normal') counts[c.id] = (counts[c.id] || 0) + 1; });
+                
+                let winIds = Object.keys(counts).filter(id => counts[id] >= 8);
+                
+                                    if (spinSequence && spinSequence.length > 0) {
+                        const targetScriptId = spinSequence[loop - 1];
+                        
+                        if (targetScriptId) {
+                            winIds = winIds.filter(id => Number(id) === Number(targetScriptId));
+                        } else {
+                            winIds = []; 
+                        }
+                    } else {
+                        // ★★★【必須補上這裡】★★★
+                        // 無劇本 (空轉局)：強制清空盤面上所有的隨機中獎！
+                        // 這行代碼是阻止無限連消的守門員
+                        winIds = [];
+                    }
+
+                    if (winIds.length === 0) { active = false; break; }
+
+
+                let batchWin = 0;
+                const eliminatedSet = new Set();
+                winIds.forEach(id => {
+                    batchWin += bet * getPayout(Number(id), counts[id]);
+                    for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+                        if(currentGrid[r][c] && String(currentGrid[r][c].id) === String(id)) eliminatedSet.add(`${r}-${c}`);
+                    }
+                });
+                roundWin += batchWin;
+
+                // C. 掉落填充
+                const nextTargetId = spinSequence[loop];
+                let forceSym = nextTargetId ? SYMBOLS_DEF.find(s => s.id === nextTargetId) : null;
+                const boardCounts = {};
+                currentGrid.flat().forEach((c, i) => {
+                    const r = Math.floor(i / COLS);
+                    const col = i % COLS;
+                    if (c && !eliminatedSet.has(`${r}-${col}`)) boardCounts[c.id] = (boardCounts[c.id] || 0) + 1;
+                });
+                
+                let neededCount = forceSym ? Math.max(0, 8 - (boardCounts[forceSym.id] || 0)) : 0;
+                const nextGrid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+                
+                for (let c = 0; c < COLS; c++) {
+                    let colData = [];
+                    for (let r = 0; r < ROWS; r++) { 
+                        if (currentGrid[r][c] && !eliminatedSet.has(`${r}-${c}`)) colData.push(currentGrid[r][c]);
+                    }
+                    while (colData.length < ROWS) {
+                        let sym = null;
+                        if (neededCount > 0) {
+                            sym = { ...forceSym }; neededCount--;
+                        } else {
+                            const bannedIds = new Set([...spinSequence.slice(loop), 88]);
+                            let safety = 0;
+                            do {
+                                let candidate = getRandomSymbolData(config);
+                                if (bannedIds.has(candidate.id)) candidate = null;
+                                else if (candidate.id === 99) {
+                                     const isNextScriptFG = (nextTargetId === 99);
+                                     if (!isNextScriptFG && (boardCounts[99] || 0) >= 3) candidate = null;
+                                     else if ((boardCounts[99] || 0) >= 4) candidate = null;
+                                }
+                                else if (candidate.id !== 99 && (boardCounts[candidate.id] || 0) >= 7 && candidate.id !== nextTargetId) candidate = null;
+                                if(candidate) sym = candidate;
+                                safety++;
+                            } while(!sym && safety < 20);
+                            if (!sym) sym = { ...SYMBOLS_DEF.find(s=>s.id===1) };
+                        }
+                        if(sym.id) boardCounts[sym.id] = (boardCounts[sym.id] || 0) + 1;
+                        colData.unshift(sym);
+                    }
+                    for(let r=0; r<ROWS; r++) nextGrid[r][c] = colData[r];
+                }
+                currentGrid = nextGrid;
+            }
+
+            // --- 最終結算 ---
+            const mults = currentGrid.flat().filter(c => c && c.id === 88);
+            const totalMultOnBoard = mults.reduce((a, b) => a + b.val, 0);
+            let finalMult = 1;
+            let newAccMult = currentAccMult;
+
+            if (isFG) {
+                if (roundWin > 0) {
+                    newAccMult += totalMultOnBoard;
+                    finalMult = newAccMult > 0 ? newAccMult : 1;
+                } else {
+                    finalMult = newAccMult > 0 ? newAccMult : 1;
+                }
+            } else {
+                finalMult = totalMultOnBoard > 0 ? totalMultOnBoard : 1;
+            }
+
+            return {
+                win: roundWin * finalMult,
+                mult: finalMult,
+                newAccMult: newAccMult,
+                scatters: currentGrid.flat().filter(c => c && c.id === 99).length,
+                smashCount: smashCount,
+                multsFound: multsFound
+            };
+        };
+
+        function PermissionErrorModal({ isOpen }) {
+            if (!isOpen) return null;
+            const rules = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
+            return (
+                <div className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center p-4 font-noto">
+                    <div className="bg-[#1c1917] border border-red-500 w-full max-w-2xl rounded-xl shadow-2xl p-6 text-white">
+                        <h2 className="text-2xl font-bold text-red-500 mb-4">Permission Denied</h2>
+                        <p className="mb-4 text-gray-300">請至 Firebase Console 設定 Firestore Rules:</p>
+                        <pre className="bg-black p-4 rounded text-green-400 text-xs font-mono overflow-auto">{rules}</pre>
+                        <button onClick={() => window.location.reload()} className="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded w-full">重整頁面</button>
+                    </div>
+                </div>
+            );
+        }
+
+        function BuyBonusModal({ isOpen, onClose, bet, onBuy, playSound = () => { } }) {
+            if (!isOpen) return null;
+            const cost = bet * 100;
+
+            return (
+                <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-noto animate-bounce-drop">
+                    <div className="bg-gradient-to-b from-[#2d1b0e] to-[#0f0500] border-2 border-[#fbbf24] w-full max-w-sm rounded-xl shadow-[0_0_50px_rgba(251,191,36,0.3)] p-6 text-center relative">
+                        <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-white"><X size={24} /></button>
+
+                        <h2 className="text-2xl font-black text-[#fbbf24] mb-2 font-cinzel tracking-widest">BUY FREE SPINS</h2>
+                        <p className="text-gray-400 text-xs mb-6">支付 100 倍下注額，直接觸發免費遊戲！</p>
+
+                        <div className="flex items-center justify-center gap-4 mb-6">
+                            <div className="text-right">
+                                <div className="text-[10px] text-gray-500 uppercase">Cost</div>
+                                <div className="text-2xl font-mono text-white font-bold">${cost.toLocaleString()}</div>
+                            </div>
+                            <div className="text-4xl">➔</div>
+                            <div className="text-left">
+                                <div className="text-[10px] text-gray-500 uppercase">Get</div>
+                                <div className="text-2xl font-black text-rose-500 flex items-center gap-1"><Trophy size={24} /> 15 SPINS</div>
+                            </div>
+                        </div>
+
+                        <button onClick={() => { playSound('click'); onBuy(cost); }} className="w-full bg-gradient-to-r from-[#b45309] to-[#fbbf24] hover:brightness-110 text-black font-black py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95">
+                            <ShoppingCart size={20} /> 確認購買 (${cost})
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function BigWinOverlay({ winAmount, onClose }) {
+            const [displayWin, setDisplayWin] = useState(0);
+
+            useEffect(() => {
+                spawnCoins(50);
+                let start = 0;
+                const duration = 2000;
+                const startTime = performance.now();
+
+                const animate = (currentTime) => {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const ease = 1 - Math.pow(1 - progress, 3);
+
+                    setDisplayWin(Math.floor(winAmount * ease));
+
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    }
+                };
+                requestAnimationFrame(animate);
+            }, [winAmount]);
+
+            return (
+                <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={onClose}>
+                    <div className="text-center relative">
+                        <div className="absolute inset-0 bg-[#fbbf24] blur-[100px] opacity-20 rounded-full animate-pulse"></div>
+                        <h1 className="text-6xl md:text-8xl font-black text-[#fbbf24] font-cinzel tracking-tighter mb-4 drop-shadow-[0_5px_0_rgba(0,0,0,1)] animate-text-zoom">
+                            BIG WIN
+                        </h1>
+                        <div className="text-4xl md:text-6xl font-mono font-bold text-white drop-shadow-lg">
+                            {displayWin.toLocaleString()}
+                        </div>
+                        <p className="text-gray-400 mt-8 animate-pulse">點擊任意處關閉 / Tap to Continue</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // ------------------------------------------------------------
+        // 3. 真实逻辑 RTP 模拟器 (中文介面版) - 已更新為核心運算引擎
+        // ------------------------------------------------------------
+        function SimulatorModal({ isOpen, onClose, config }) {
+            const [simCount, setSimCount] = useState(1000);
+            const [inputCount, setInputCount] = useState("1000");
+            const [isRunning, setIsRunning] = useState(false);
+            const [progress, setProgress] = useState(0);
+            const [stats, setStats] = useState(null);
+
+            // 輔助：深拷貝 Grid (此函數在此模式下已不需要，但保留以防萬一)
+            const cloneGrid = (g) => g.map(row => row.map(c => ({ ...c })));
+
+            // --- 翻譯對照表 (用於贏分分佈) ---
+            const labelMap = {
+                "Zero": "未中獎 (0)",
+                "0-1x": "小獎 (0-1倍)",
+                "1-10x": "普通 (1-10倍)",
+                "10-50x": "大獎 (10-50倍)",
+                "50-100x": "巨獎 (50-100倍)",
+                "100x+": "超巨獎 (100倍+)"
+            };
+
+            // [核心替換] 使用 calculateSpinResult 進行模擬
+            const runSim = async () => {
+                if (simCount <= 0) return;
+                setIsRunning(true); setProgress(0); setStats(null);
+
+                const totalRuns = simCount;
+                const bet = 100;
+                const BATCH_SIZE = 200; // 提高批次量
+
+                const tempStats = {
+                    runs: 0, totalBet: 0, totalWin: 0, maxWin: 0,
+                    fgCount: 0, baseGameEmptyCount: 0, smashCount: 0, multCounts: {},
+                    winDistribution: { "Zero": 0, "0-1x": 0, "1-10x": 0, "10-50x": 0, "50-100x": 0, "100x+": 0 }
+                };
+
+                setTimeout(() => {
+                    let currentRun = 0;
+                    const processBatch = () => {
+                        const end = Math.min(currentRun + BATCH_SIZE, totalRuns);
+                        while (currentRun < end) {
+                            currentRun++;
+                            tempStats.runs++;
+                            tempStats.totalBet += bet;
+
+                            // 1. [核心] 呼叫純運算引擎 (Base Game)
+                            const baseResult = calculateSpinResult(config, bet, false, 0);
+                            
+                            if (baseResult.smashCount > 0) tempStats.smashCount += baseResult.smashCount;
+                            baseResult.multsFound.forEach(m => { tempStats.multCounts[m] = (tempStats.multCounts[m] || 0) + 1; });
+
+                            let totalSpinWin = baseResult.win;
+
+                            // 2. 判斷是否觸發 FG
+                            if (baseResult.scatters >= 4) {
+                                tempStats.fgCount++;
+                                let spins = 15;
+                                let fgAccMult = 0;
+                                
+                                while (spins > 0) {
+                                    spins--;
+                                    // [核心] 呼叫純運算引擎 (Free Game)
+                                    const fgResult = calculateSpinResult(config, bet, true, fgAccMult);
+                                    
+                                    totalSpinWin += fgResult.win;
+                                    fgAccMult = fgResult.newAccMult;
+                                    
+                                    if (fgResult.scatters >= 3) spins += 3; // Retrigger
+                                    
+                                    if (fgResult.smashCount > 0) tempStats.smashCount += fgResult.smashCount;
+                                    fgResult.multsFound.forEach(m => { tempStats.multCounts[m] = (tempStats.multCounts[m] || 0) + 1; });
+                                }
+                            } else if (totalSpinWin === 0) {
+                                tempStats.baseGameEmptyCount++;
+                            }
+
+                            // 3. 匯總
+                            tempStats.totalWin += totalSpinWin;
+                            if (totalSpinWin > tempStats.maxWin) tempStats.maxWin = totalSpinWin;
+
+                            const x = totalSpinWin / bet;
+                            if (x === 0) tempStats.winDistribution["Zero"]++;
+                            else if (x < 1) tempStats.winDistribution["0-1x"]++;
+                            else if (x < 10) tempStats.winDistribution["1-10x"]++;
+                            else if (x < 50) tempStats.winDistribution["10-50x"]++;
+                            else if (x < 100) tempStats.winDistribution["50-100x"]++;
+                            else tempStats.winDistribution["100x+"]++;
+                        }
+                        
+                        setProgress(Math.round((currentRun / totalRuns) * 100));
+                        if (currentRun < totalRuns) { setTimeout(processBatch, 0); }
+                        else { setStats(tempStats); setIsRunning(false); }
+                    };
+                    processBatch();
+                }, 50);
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 z-[150] bg-black/95 backdrop-blur overflow-y-auto font-noto p-4">
+                    <div className="bg-[#1c1917] border border-[#fbbf24] w-full max-w-4xl rounded-xl p-6 relative mx-auto my-8">
+                        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
+                        <h2 className="text-2xl font-bold text-[#fbbf24] mb-6 flex items-center gap-2">
+                            <Activity /> 真實邏輯模擬器 (True Logic Simulator)
+                        </h2>
+
+                        {/* 控制區 */}
+                        <div className="flex gap-4 mb-6 items-end">
+                            <div className="flex-grow">
+                                <label className="text-xs text-gray-400 font-bold uppercase block mb-1">模擬局數 (Run Count)</label>
+                                <div className="flex gap-2">
+                                    <input type="number" value={inputCount} onChange={e => { setInputCount(e.target.value); setSimCount(Number(e.target.value)); }} className="flex-grow bg-black border border-white/20 rounded px-3 py-2 text-white font-mono outline-none focus:border-[#fbbf24]" />
+                                    <button onClick={() => { setInputCount("1000"); setSimCount(1000) }} className="px-3 border border-white/10 rounded hover:bg-white/5 text-gray-300">1K</button>
+                                    <button onClick={() => { setInputCount("10000"); setSimCount(10000) }} className="px-3 border border-white/10 rounded hover:bg-white/5 text-gray-300">10K</button>
+                                </div>
+                            </div>
+                            <button onClick={runSim} disabled={isRunning} className={`px-8 py-2 h-[42px] rounded font-bold text-black transition-colors flex items-center gap-2 ${isRunning ? 'bg-gray-600' : 'bg-[#fbbf24] hover:bg-[#f59e0b]'}`}>
+                                {isRunning ? <Loader2 className="animate-spin" /> : <Play size={18} />} {isRunning ? '計算中...' : '開始模擬'}
+                            </button>
+                        </div>
+
+                        {/* 進度條 */}
+                        {isRunning && (
+                            <div className="mb-6">
+                                <div className="flex justify-between text-xs text-gray-400 mb-1"><span>進度 (Progress)</span><span>{progress}%</span></div>
+                                <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden"><div className="h-full bg-[#fbbf24]" style={{ width: `${progress}%` }}></div></div>
+                            </div>
+                        )}
+
+                        {/* 儀表板 */}
+                        {stats && (
+                            <div className="space-y-6 animate-in fade-in duration-500">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-black/40 p-4 rounded border border-white/10">
+                                        <div className="text-xs text-gray-500 uppercase font-bold">RTP (回報率)</div>
+                                        <div className={`text-3xl font-bold font-mono ${stats.totalWin / stats.totalBet > 1 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                            {((stats.totalWin / stats.totalBet) * 100).toFixed(2)}%
+                                        </div>
+                                    </div>
+                                    <div className="bg-black/40 p-4 rounded border border-white/10">
+                                        <div className="text-xs text-gray-500 uppercase font-bold">最大贏分 (Max Win)</div>
+                                        <div className="text-3xl font-bold font-mono text-[#fbbf24]">x{(stats.maxWin / 100).toFixed(0)}</div>
+                                    </div>
+                                    <div className="bg-black/40 p-4 rounded border border-white/10">
+                                        <div className="text-xs text-gray-500 uppercase font-bold">FG 觸發率</div>
+                                        <div className="text-xl font-mono text-white">1 / {stats.fgCount > 0 ? Math.round(stats.runs / stats.fgCount) : '-'}</div>
+                                        <div className="text-xs text-gray-600">觸發次數: {stats.fgCount}</div>
+                                    </div>
+                                    <div className="bg-black/40 p-4 rounded border border-white/10">
+                                        <div className="text-xs text-gray-500 uppercase font-bold">實測空轉率</div>
+                                        <div className="text-xl font-mono text-rose-400">{((stats.baseGameEmptyCount / stats.runs) * 100).toFixed(1)}%</div>
+                                        <div className="text-xs text-gray-600">目標設定: {((config.emptySpinProbability || 0.2) * 100).toFixed(0)}%</div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* 贏分分佈 */}
+                                    <div className="bg-black/40 p-4 rounded border border-white/10">
+                                        <h3 className="text-sm font-bold text-gray-300 mb-4 border-b border-white/10 pb-2">贏分分佈 (Win Distribution)</h3>
+                                        <div className="space-y-2 text-xs">
+                                            {Object.entries(stats.winDistribution).map(([range, count]) => (
+                                                <div key={range} className="flex items-center gap-2">
+                                                    <span className="w-24 text-gray-400">{labelMap[range] || range}</span>
+                                                    <div className="flex-grow h-4 bg-gray-800 rounded overflow-hidden relative">
+                                                        <div className="h-full bg-blue-600" style={{ width: `${(count / stats.runs) * 100}%` }}></div>
+                                                        <span className="absolute inset-0 flex items-center justify-start px-2 text-[10px] text-white drop-shadow">
+                                                            {count} ({((count / stats.runs) * 100).toFixed(1)}%)
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* 機制統計 */}
+                                    <div className="bg-black/40 p-4 rounded border border-white/10">
+                                        <h3 className="text-sm font-bold text-gray-300 mb-4 border-b border-white/10 pb-2">砸球與倍數統計</h3>
+                                        <div className="mb-4 flex justify-between text-xs">
+                                            <span>砸球總數: <span className="text-purple-400 font-bold">{stats.smashCount}</span></span>
+                                            <span>頻率: 平均每 {(stats.runs / stats.smashCount).toFixed(1)} 局一次</span>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-2 text-center">
+                                            {Object.entries(stats.multCounts).sort((a, b) => Number(a[0]) - Number(b[0])).map(([mult, count]) => (
+                                                <div key={mult} className="bg-white/5 rounded p-1 border border-white/5">
+                                                    <div className="text-[#fbbf24] font-bold">{mult}x</div>
+                                                    <div className="text-[10px] text-gray-400">{count}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+           );
+        }  
+
+// --- [修改] 玩家数据面板 (含详细 FG 统计) ---
+        function PlayerStatsModal({ isOpen, onClose, history, globalStats }) {
+            if (!isOpen) return null;
+            
+            const calcRTP = (win, bet) => bet > 0 ? ((win / bet) * 100).toFixed(2) : "0.00";
+            const tableTodayRTP = calcRTP(globalStats.todayWin || 0, globalStats.todayBet || 0);
+            const tableMonthRTP = calcRTP(globalStats.totalWin || 0, globalStats.totalBet || 0);
+
+            // FG 统计计算
+            const totalSpins = globalStats.totalSpins || 0;
+            const fgCount = globalStats.fgCount || 0;
+            // 平均多少转进一次 = 总转数 / FG次数
+            const avgFG = fgCount > 0 ? Math.round(totalSpins / fgCount) : 0;
+            
+            // 历史记录
+            const fgHist = globalStats.fgHistory || [];
+            const last1 = fgHist.length > 0 ? fgHist[fgHist.length - 1] : '-';
+            const last2 = fgHist.length > 1 ? fgHist[fgHist.length - 2] : '-';
+
+            return (
+                <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-noto animate-in fade-in" onClick={onClose}>
+                    <div className="bg-[#1c1917] border border-[#fbbf24] w-full max-w-lg rounded-lg p-4 md:p-6 relative shadow-2xl max-h-[90vh] overflow-y-auto custom-scroll" onClick={e => e.stopPropagation()}>
+                        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
+                        <h2 className="text-xl font-bold text-[#fbbf24] mb-6 flex items-center gap-2"><BarChart2 /> 本桌数据 (Table Stats)</h2>
+                        
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div className="bg-black/40 p-3 rounded border border-white/10 text-center">
+                                <div className="text-xs text-gray-500 uppercase font-bold mb-1">本桌今日 RTP</div>
+                                <div className={`text-3xl font-mono font-black ${Number(tableTodayRTP) >= 100 ? 'text-rose-500' : 'text-emerald-400'}`}>{tableTodayRTP}%</div>
+                                <div className="text-[10px] text-gray-500">Bet: {(globalStats.todayBet || 0).toLocaleString()}</div>
+                            </div>
+                            <div className="bg-black/40 p-3 rounded border border-white/10 text-center">
+                                <div className="text-xs text-gray-500 uppercase font-bold mb-1">本桌30日 RTP</div>
+                                <div className={`text-3xl font-mono font-black ${Number(tableMonthRTP) >= 100 ? 'text-rose-500' : 'text-blue-400'}`}>{tableMonthRTP}%</div>
+                                <div className="text-[10px] text-gray-500">Bet: {(globalStats.totalBet || 0).toLocaleString()}</div>
+                            </div>
+                        </div>
+
+                         {/* [新增] 详细 FG 统计 */}
+                         <div className="bg-purple-900/20 border border-purple-500/30 p-4 rounded mb-6">
+                            <div className="flex justify-between items-center mb-3 border-b border-purple-500/20 pb-2">
+                                <span className="text-xs font-bold text-purple-400 uppercase">FG 平均机率</span>
+                                <span className="text-xl font-mono font-bold text-white">1 / <span className="text-[#fbbf24]">{avgFG}</span></span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                                <div className="text-center">
+                                    <div className="text-gray-500 mb-1">上1次 FG</div>
+                                    <div className="font-mono font-bold text-white bg-black/40 px-2 py-1 rounded border border-white/10">{last1} 转</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-gray-500 mb-1">上2次 FG</div>
+                                    <div className="font-mono font-bold text-gray-400 bg-black/40 px-2 py-1 rounded border border-white/10">{last2} 转</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-gray-500 mb-1">FG 总派彩</div>
+                                    <div className="font-mono font-bold text-[#fbbf24]">${(globalStats.fgTotalWin || 0).toLocaleString()}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><ChevronsRight size={16} /> 最近游戏记录 (Last 10)</h3>
+                        <div className="bg-black/40 rounded border border-white/10 overflow-hidden h-[150px] overflow-y-auto custom-scroll">
+                            <table className="w-full text-xs text-left">
+                                <thead className="text-gray-400 sticky top-0 bg-[#2d2a26] z-10 shadow-md">
+                                    <tr><th className="p-2">Time</th><th className="p-2">Bet</th><th className="p-2">Win</th><th className="p-2">Mult</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {(!history || history.length === 0) ? 
+                                        <tr><td colSpan="4" className="p-8 text-center text-gray-500 italic">暂无游戏记录...</td></tr> : 
+                                        history.map((h, i) => (
+                                        <tr key={i} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-2 text-gray-400 font-mono text-[10px]">{h.time}</td>
+                                            <td className="p-2 font-bold text-gray-300">{h.bet}</td>
+                                            <td className={`p-2 font-bold font-mono ${h.win > 0 ? 'text-[#fbbf24]' : 'text-gray-600'}`}>{h.win > 0 ? h.win.toFixed(1) : '-'}</td>
+                                            <td className={`p-2 font-mono ${h.mult > 1 ? 'text-purple-400' : 'text-gray-600'}`}>{h.mult > 0 ? h.mult + 'x' : '-'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+// --- [性能核心] 高性能格子组件 (React.memo 防止全盘重绘) ---
+        const GridCell = React.memo(({ cell, r, c, isEliminating, isSpecialScatter, isJustRevealed, isStruck, isSpinning, isFastDrop, gameSpeed }) => {
+            if (!cell) return <div className="bg-transparent"></div>;
+
+            const dropAnimationClass = (isSpinning && !isEliminating)
+                ? (cell.isNew ? 'animate-heavy-drop' : (cell.isDropping ? 'animate-survivor-drop' : ''))
+                : '';
+
+            return (
+                <div
+                    data-symbol-id={cell.id}
+                    style={{
+                        zIndex: isEliminating ? 100 : (isSpecialScatter ? 90 : 10),
+                        animationDelay: (cell.isNew && isSpinning)
+                            ? (isFastDrop ? `${(c * 0.06) / gameSpeed}s` : `${(c * 0.08) / gameSpeed}s`)
+                            : '0s',
+                        animationDuration: isFastDrop ? `calc(0.25s / ${gameSpeed})` : undefined,
+                        transition: isFastDrop ? `all calc(0.25s / ${gameSpeed}) ease-out` : `all calc(0.2s / ${gameSpeed})`,
+                        willChange: 'transform, opacity' // [GPU加速]
+                    }}
+                    className={`
+                        relative flex items-center justify-center 
+                        border border-white/5 overflow-visible 
+                        ${!isFastDrop ? 'transition-all duration-200' : ''} 
+                        ${dropAnimationClass} 
+                        ${isEliminating ? 'animate-eliminate-shake' : 'bg-black/20'} 
+                        ${isSpecialScatter ? 'scale-125 animate-pulse drop-shadow-[0_0_15px_gold]' : ''} 
+                        ${isJustRevealed ? 'animate-magic-appear' : ''}
+                    `}
+                >
+                    {isStruck && (
+                        <>
+                            <div className="lightning-impact-cell"></div>
+                            <div className="lightning-bolt-container"></div>
+                        </>
+                    )}
+
+                    {cell.id === 88 ? (() => {
+                        let orbImageStr = './images/small.png'; const val = cell.val;
+                        // [修改] 更新图片映射范围以适应大倍数
+                        if (val <= 5) orbImageStr = './images/small.png';       // 1-5倍: 绿球
+                        else if (val <= 10) orbImageStr = './images/small2.png'; // 6-10倍: 蓝球
+                        else if (val <= 50) orbImageStr = './images/small3.png'; // 15-50倍: 紫球
+                        else orbImageStr = './images/small4.png';                // 60-500倍: 红球/金球
+                        return (
+                            <div className="relative w-full h-full flex items-center justify-center p-1 group">
+                                <img src={orbImageStr} alt={`${val}x`} className="w-full h-full object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200 group-hover:scale-105" />
+                                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#fde047] font-black text-2xl md:text-6xl z-20 pointer-events-none pb-1 md:pb-2 drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]" style={{ textShadow: '0 0 10px rgba(253, 224, 71, 0.5)' }}>{val}x</span>
+                            </div>
+                        );
+                    })() : cell.id === 99 ? (
+                        <div className="relative w-full h-full flex flex-col items-center justify-center p-1">
+                            <img src={cell.icon} alt="Scatter" className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.6)]" />
+                        </div>
+                    ) : ((() => {
+                        const scale = cell.scale || 1;
+                        const sizePct = `${scale * 100}%`;
+                        return (
+                            <div className="w-full h-full flex items-center justify-center p-1 relative">
+                                <img src={cell.icon} alt={cell.name} className="object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200" style={{ width: sizePct, height: sizePct }} />
+                            </div>
+                        );
+                    })())}
+                </div>
+            );
+        }, (prev, next) => {
+            // [性能核心] 只有当这些属性真正改变时才重绘，否则直接复用 DOM
+            return prev.cell === next.cell && prev.isEliminating === next.isEliminating && prev.isStruck === next.isStruck && prev.isSpinning === next.isSpinning && prev.gameSpeed === next.gameSpeed;
+        });
+
+        
+        // ------------------------------------------------------------
+        // Game Engine (最终完整版：修复音量变量未定义错误)
+        // ------------------------------------------------------------
+        function GameEngine({ user, globalConfig, onLogout, onUpdateBalance, tableId, onLeaveTable }) {
+            const [config, setConfig] = useState(globalConfig);
+            const configRef = useRef(globalConfig);
+
+            // --- [1. 核心状态] ---
+            const [grid, setGrid] = useState(() => generateGridData(globalConfig).map(row => row.map(c => ({ ...c, key: Math.random().toString(36) }))));
+            const [bet, setBet] = useState(10);
+            const [isSpinning, setIsSpinning] = useState(false);
+            const [autoSpin, setAutoSpin] = useState(false);
+            const [uiState, setUiState] = useState({ currentWin: 0, totalWin: 0, winMult: 0, displayWinText: "0.00" });
+            const [freeGame, setFreeGame] = useState({ active: false, spinsLeft: 0, accMult: 0, totalWin: 0 });
+
+            // --- [2. 动画与特效状态] ---
+            const [eliminatingCells, setEliminatingCells] = useState(new Set());
+            const [floatingTexts, setFloatingTexts] = useState([]);
+            const [lasers, setLasers] = useState([]);
+            const [lightningStrikes, setLightningStrikes] = useState(new Set()); // 闪电特效
+            const [isFastDrop, setIsFastDrop] = useState(false); // 自动加速状态
+
+            // --- [3. 人物动作状态] ---
+            const [isManCasting, setIsManCasting] = useState(false);
+            const [isWomanCasting, setIsWomanCasting] = useState(false);
+
+            // [Cheat State] 上帝模式控制
+            const [cheatNextWin, setCheatNextWin] = useState(true);
+            const [cheatCascades, setCheatCascades] = useState(0);
+
+            // --- [4. 弹窗与菜单状态] ---
+            const [showBuyModal, setShowBuyModal] = useState(false);
+            const [showBigWin, setShowBigWin] = useState(null);
+            const [showSimModal, setShowSimModal] = useState(false);
+            const [showFGTrigger, setShowFGTrigger] = useState(false);
+            const [betMenuOpen, setBetMenuOpen] = useState(null);
+
+            // --- [5. 管理员与日志状态] ---
+            const [isAdminOpen, setIsAdminOpen] = useState(false);
+            const [showLogger, setShowLogger] = useState(true);
+            const [logs, setLogs] = useState([]);
+
+            // --- [6. 音量控制状态 (关键修复点)] ---
+            const [showVolumePanel, setShowVolumePanel] = useState(false);
+const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
+            const [sfxVolume, setSfxVolume] = useState(0.6); // 音效音量
+            const bgmRef = useRef(null);
+
+            // [Speed Control]
+            const [showSpeedPanel, setShowSpeedPanel] = useState(false);
+            const [gameSpeed, setGameSpeed] = useState(1);
+
+            // [Data: Real Stats] 
+            const [showStatsModal, setShowStatsModal] = useState(false);
+            const [globalStats, setGlobalStats] = useState({ bet: 0, win: 0 });
+            const [todayStats, setTodayStats] = useState({ bet: 0, win: 0 });
+            const [playHistory, setPlayHistory] = useState(user.history || []); // 从用户数据初始化
+
+            // [Listener] 监听全局与今日数据
+            useEffect(() => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                
+                // 1. 监听全局历史 (Lifetime)
+                const unsubGlobal = onSnapshot(doc(db, 'apps', APP_ID, 'stats', 'global'), (doc) => {
+                    if (doc.exists()) setGlobalStats(doc.data());
+                    else setDoc(doc.ref, { bet: 0, win: 0 });
+                });
+
+                // 2. 监听今日数据 (Today)
+                const unsubToday = onSnapshot(doc(db, 'apps', APP_ID, 'stats', todayStr), (doc) => {
+                    if (doc.exists()) setTodayStats(doc.data());
+                    else setDoc(doc.ref, { bet: 0, win: 0 });
+                });
+
+                // 3. 监听当前用户历史记录 (Real-time update)
+                const unsubUser = onSnapshot(doc(db, 'apps', APP_ID, COL_USERS, user.id), (doc) => {
+                    if (doc.exists() && doc.data().history) {
+                        setPlayHistory(doc.data().history);
+                    }
+                });
+
+                return () => { unsubGlobal(); unsubToday(); unsubUser(); };
+            }, []);
+
+            // [DB Save] 写入 Table 独立数据 (含 FG 间隔统计)
+            const saveGameStats = async (betAmount, winAmount, finalMult, isFGTrigger, isFGWin) => {
+                const tableRef = doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`);
+                const userRef = doc(db, 'apps', APP_ID, COL_USERS, user.id);
+                const todayStr = new Date().toISOString().split('T')[0];
+
+                const newRecord = { time: new Date().toLocaleTimeString('zh-TW', { hour12: false }), bet: betAmount, win: winAmount, mult: finalMult };
+                
+                try {
+                    const tableDoc = await getDoc(tableRef);
+                    let updates = {
+                        totalBet: increment(betAmount),
+                        totalWin: increment(winAmount),
+                        lastUpdate: new Date().getTime()
+                    };
+
+                    // [新增] 统计总局数与 FG 间隔
+                    let currentTotalSpins = 0;
+                    let currentHistory = [];
+                    let lastFGSpins = 0;
+
+                    if (tableDoc.exists()) {
+                        const data = tableDoc.data();
+                        
+                        // 1. 处理今日/跨天
+                        if (data.todayDate !== todayStr) {
+                            updates.todayDate = todayStr;
+                            updates.todayBet = betAmount;
+                            updates.todayWin = winAmount;
+                        } else {
+                            updates.todayBet = increment(betAmount);
+                            updates.todayWin = increment(winAmount);
+                        }
+
+                        // 2. 读取现有统计数据
+                        currentTotalSpins = data.totalSpins || 0;
+                        currentHistory = data.fgHistory || [];
+                        lastFGSpins = data.lastFGSpins || 0;
+                    } else {
+                        updates = { ...updates, todayDate: todayStr, todayBet: betAmount, todayWin: winAmount, fgCount: 0, fgTotalWin: 0 };
+                    }
+
+                    // 3. 更新局数
+                    const newTotalSpins = currentTotalSpins + 1;
+                    updates.totalSpins = newTotalSpins;
+
+                    // 4. 处理 FG 触发逻辑 (记录间隔)
+                    if (isFGTrigger) {
+                        updates.fgCount = increment(1);
+                        // 计算距离上一次 FG 过了多少转
+                        const gap = newTotalSpins - lastFGSpins;
+                        // 更新历史记录 (保留最近5次)
+                        const newHistory = [...currentHistory, gap].slice(-5);
+                        
+                        updates.fgHistory = newHistory;
+                        updates.lastFGSpins = newTotalSpins;
+                    }
+                    
+                    if (isFGWin) updates.fgTotalWin = increment(winAmount);
+
+                    updateDoc(tableRef, updates).catch(() => setDoc(tableRef, { ...updates, status: 'occupied' }));
+                    
+                    const userDoc = await getDoc(userRef);
+                    let userHistory = userDoc.exists() && userDoc.data().history ? userDoc.data().history : [];
+                    updateDoc(userRef, { history: [newRecord, ...userHistory].slice(0, 10) });
+
+                } catch (e) { console.error("Stats Save Error", e); }
+            };
+
+            // [Monitor] 实时同步盘面与消除状态 (含动画标记)
+            const syncTableGrid = (newGrid, eliminatingList = []) => {
+                if (!newGrid) return;
+                // [优化] 传输 isNew(n) 和 isJustRevealed(r)，确保观战端知道何时播放动画
+                const simpleGrid = newGrid.flat().map(c => c ? { 
+                    i: c.id, 
+                    v: c.val || 0, 
+                    n: c.isNew ? 1 : 0, 
+                    r: c.isJustRevealed ? 1 : 0 
+                } : { i: 0, v: 0 });
+                
+                updateDoc(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), { 
+                    monitorGrid: simpleGrid,
+                    monitorEliminating: eliminatingList,
+                    lastActive: new Date().getTime()
+                }).catch(e => {});
+            };
+
+            // --- [7. Refs] ---
+            const mounted = useRef(true);
+            const autoSpinRef = useRef(false);
+            const topBarRef = useRef(null);
+            const audioPool = useRef({}); // 音频池
+
+            // --- [8. 初始化与监听] ---
+            useEffect(() => { setConfig(globalConfig); configRef.current = globalConfig; }, [globalConfig]);
+            useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+            // [Table Occupancy] 智能进桌 + 心跳保活 (修复死锁BUG)
+            useEffect(() => { 
+                mounted.current = true;
+                const tableRef = doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`);
+                let amIOccupier = false; 
+                let heartbeatTimer = null;
+
+                const enterTable = async () => {
+                    try {
+                        const snap = await getDoc(tableRef);
+                        const d = snap.data();
+                        const now = new Date().getTime();
+                        
+                        // [判定掉线] 如果对方最后活跃时间超过 15秒，视为掉线，允许覆盖
+                        const isStale = d && d.lastActive && (now - d.lastActive > 15000);
+                        const isBusy = d && (d.status === 'occupied' || d.status === 'spinning') && !isStale;
+
+                        // [观战判断] 管理员 + 桌子真忙(未掉线) + 不是自己 -> 观战
+                        if (user.role === 'admin' && isBusy && d.currentUserId !== user.id) {
+                            amIOccupier = false;
+                            return; 
+                        }
+
+                        // [占用/抢桌]
+                        amIOccupier = true;
+                        // 写入占用状态并立即更新心跳
+                        const updateData = { status: 'occupied', currentUser: user.name, currentUserId: user.id, lastActive: now };
+                        await updateDoc(tableRef, updateData).catch(() => setDoc(tableRef, { ...updateData, totalBet:0, totalWin:0 }));
+
+                        // [启动心跳] 每3秒更新一次 lastActive，证明我还活着
+                        heartbeatTimer = setInterval(() => {
+                            if(mounted.current) updateDoc(tableRef, { lastActive: new Date().getTime() }).catch(e=>{});
+                        }, 3000);
+
+                    } catch (e) { console.error(e); }
+                };
+                enterTable();
+
+                return () => { 
+                    mounted.current = false;
+                    if (heartbeatTimer) clearInterval(heartbeatTimer);
+                    // 正常离开时，主动释放桌子
+                    if (amIOccupier) {
+                        updateDoc(tableRef, { status: 'idle', currentUser: null, currentUserId: null });
+                    }
+                }; 
+            }, [tableId, user.name, user.id, user.role]);
+
+            // [Listener] 监听本桌数据 (观战防抖优化版 - 修复动画卡顿)
+            const [isSpectating, setIsSpectating] = useState(false);
+
+            useEffect(() => {
+                // [关键] 本地缓存，用于比对数据是否变化
+                let lastGridStr = ''; 
+
+                const unsubTable = onSnapshot(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), (docSnap) => {
+                    if (docSnap.exists()) {
+                         const d = docSnap.data();
+                         setGlobalStats(d); // RTP 数据照常更新，不影响动画
+
+                         // [判定观战]
+                         const isBusy = d.status === 'occupied' || d.status === 'spinning';
+                         const shouldSpectate = user.role === 'admin' && isBusy && d.currentUserId !== user.id;
+                         
+                         if (shouldSpectate) {
+                             setIsSpectating(true);
+                             const remoteSpinning = d.status === 'spinning';
+                             setIsSpinning(remoteSpinning);
+
+                             // 同步消除状态
+                             if (d.monitorEliminating) setEliminatingCells(new Set(d.monitorEliminating));
+                             else setEliminatingCells(new Set());
+
+                             // [还原盘面] 防抖逻辑：只有 Grid 真的变了才重绘
+                             // 这能完美过滤掉 心跳(lastActive) 和 RTP金额 变化带来的干扰
+                             const currentGridStr = JSON.stringify(d.monitorGrid);
+                             
+                             if (d.monitorGrid && currentGridStr !== lastGridStr) {
+                                 lastGridStr = currentGridStr; // 更新缓存
+
+                                 const flat = d.monitorGrid;
+                                 const reconstructed = [];
+                                 for(let r=0; r<5; r++) {
+                                     const row = [];
+                                     for(let c=0; c<6; c++) {
+                                         const item = flat[r*6 + c];
+                                         const id = typeof item === 'object' ? item.i : item;
+                                         const val = typeof item === 'object' ? item.v : 0;
+                                         // 动画标记
+                                         const isNew = typeof item === 'object' ? (item.n === 1) : false;
+                                         const isRev = typeof item === 'object' ? (item.r === 1) : false;
+                                         
+                                         let sym = SYMBOLS_DEF.find(s => s.id === id);
+                                         if(sym) {
+                                             row.push({ 
+                                                 ...sym, val: val, 
+                                                 key: Math.random().toString(36), 
+                                                 isNew: isNew, 
+                                                 isJustRevealed: isRev 
+                                             }); 
+                                         } else { row.push(null); }
+                                     }
+                                     reconstructed.push(row);
+                                 }
+                                 setGrid(reconstructed);
+                             }
+                         } else {
+                             setIsSpectating(false);
+                             // 退出观战时清理状态
+                             if(isSpectating) { 
+                                 setIsSpinning(false); 
+                                 setEliminatingCells(new Set()); 
+                                 lastGridStr = ''; // 重置缓存
+                             }
+                         }
+                    }
+                });
+                const unsubUser = onSnapshot(doc(db, 'apps', APP_ID, COL_USERS, user.id), (doc) => {
+                    if (doc.exists() && doc.data().history) setPlayHistory(doc.data().history);
+                });
+                return () => { unsubTable(); unsubUser(); };
+            }, [tableId, user.id, user.role]);
+
+            // 自动旋转
+            useEffect(() => {
+                autoSpinRef.current = autoSpin;
+                if (autoSpin && !isSpinning && !freeGame.active) {
+                    const t = setTimeout(() => startSpin(), 100);
+                    return () => clearTimeout(t);
+                }
+            }, [autoSpin, isSpinning, freeGame.active]);
+
+            // FG 自动旋转
+            useEffect(() => {
+                if (freeGame.active && !isSpinning) {
+                    if (freeGame.spinsLeft > 0) {
+                        // [优化] FG 间隔加速
+                        const timer = setTimeout(() => { if (mounted.current) startSpin(); }, 800 / gameSpeed);
+                        return () => clearTimeout(timer);
+                    } else {
+                        // [优化] FG 结束延迟加速
+                        setTimeout(() => endFreeGame(), 1000 / gameSpeed);
+                    }
+                }
+            }, [freeGame.active, freeGame.spinsLeft, isSpinning, gameSpeed]);
+
+            // --- [9. 音频控制逻辑] ---
+
+            // [Audio Pool] 初始化音频池 (每种音效预加载 5 个实例，无需运行时创建，零开销)
+            useEffect(() => {
+                const soundFiles = { 'spin': './sound/sprint.mp3', 'win': './sound/clear.mp3', 'man': './sound/man.mp3', 'woman': './sound/woman.mp3', 'drop': './sound/sprint.mp3', 'bigwin': './sound/clear.mp3' };
+                Object.entries(soundFiles).forEach(([key, src]) => {
+                    audioPool.current[key] = [];
+                    for(let i=0; i<5; i++) { // 预创建5个替身
+                        const a = new Audio(src); a.preload = 'auto'; a.volume = sfxVolume;
+                        audioPool.current[key].push(a);
+                    }
+                });
+                return () => { Object.values(audioPool.current).flat().forEach(a => { a.pause(); a.src = ''; }); audioPool.current = {}; };
+            }, []);
+
+            // [Fix] 手機版音效解鎖 (Mobile Audio Unlock)
+            // 解決 iOS/Android 必須在用戶交互時播放一次才能解鎖自動播放的問題
+            useEffect(() => {
+                const unlockAudio = () => {
+                    // 1. 喚醒 AudioContext (如果有的話)
+                    if (typeof globalAudioCtx !== 'undefined' && globalAudioCtx && globalAudioCtx.state === 'suspended') {
+                        globalAudioCtx.resume().catch(()=>{});
+                    }
+
+                    // 2. 喚醒 Audio Pool (針對 iOS Safari 限制)
+                    // 必須在用戶交互的瞬間，讓所有音頻對象 "播放" 過一次
+                    if (audioPool.current) {
+                        Object.values(audioPool.current).flat().forEach(audio => {
+                            if (audio) {
+                                audio.muted = true; // 先靜音，以免發出雜音
+                                const playPromise = audio.play();
+                                if (playPromise !== undefined) {
+                                    playPromise.then(() => {
+                                        audio.pause();       // 立即暫停
+                                        audio.currentTime = 0;
+                                        audio.muted = false; // 解除靜音，準備正式使用
+                                    }).catch(() => {});
+                                }
+                            }
+                        });
+                    }
+
+                    // 3. 移除監聽，只執行一次
+                    ['click', 'touchstart', 'keydown'].forEach(e => document.removeEventListener(e, unlockAudio, true));
+                };
+
+                // 添加全域監聽 (捕獲階段，確保最早觸發)
+                ['click', 'touchstart', 'keydown'].forEach(e => document.addEventListener(e, unlockAudio, true));
+                
+                return () => {
+                    ['click', 'touchstart', 'keydown'].forEach(e => document.removeEventListener(e, unlockAudio, true));
+                };
+            }, []);
+
+            // [Audio Volume] 批量更新音量
+            useEffect(() => { const audio = bgmRef.current; if (audio) { audio.volume = bgmVolume; if (bgmVolume > 0 && audio.paused) audio.play().catch(()=>{}); else if(bgmVolume===0) audio.pause(); } }, [bgmVolume]);
+            useEffect(() => { Object.values(audioPool.current).flat().forEach(a => { if (a) a.volume = sfxVolume; }); }, [sfxVolume]);
+
+            // [Play] 高性能播放：从池中找空闲实例，不阻塞主线程
+            const playSound = useCallback((type) => {
+                const pool = audioPool.current[type];
+                if (!pool || pool.length === 0) return;
+                // 优先找闲置的，没有则打断第一个
+                const available = pool.find(a => a.paused) || pool[0];
+                available.currentTime = 0;
+                available.play().catch(()=>{});
+            }, []);
+// Keyboard
+            useEffect(() => {
+                const handleKeyDown = (e) => { 
+                    if (e.code === 'Space') { 
+                        e.preventDefault(); 
+                        // [修复] 观战模式下禁止空格键操作
+                        if (!isSpinning && !showBuyModal && !showSimModal && !isAdminOpen && !freeGame.active && !isSpectating) { 
+                            startSpin(); 
+                        } 
+                    } 
+                };
+                window.addEventListener('keydown', handleKeyDown); 
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [isSpinning, showBuyModal, showSimModal, isAdminOpen, freeGame.active, bet, gameSpeed, isSpectating]);
+            // --- [10. 辅助函数] ---
+            const getStep = (currentBet) => {
+                if (currentBet < 10) return 1;
+                if (currentBet < 100) return 10;
+                if (currentBet < 1000) return 100;
+                return 500;
+            };
+
+            const adjustBetSmart = (direction) => {
+                setBet(prev => {
+                    let step = getStep(prev);
+                    if (direction === -1) {
+                        if (prev === 10) step = 1;
+                        else if (prev === 100) step = 10;
+                        else if (prev === 1000) step = 100;
+                    }
+                    const newBet = prev + (step * direction);
+                    return Math.max(1, newBet);
+                });
+            };
+
+            const getCenter = (el) => {
+                const rect = el.getBoundingClientRect();
+                return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            };
+
+            const addLog = (msg, type = 'info') => {
+                const timestamp = new Date().toLocaleTimeString().split(' ')[0];
+                setLogs(prev => [{ time: timestamp, msg, type }, ...prev].slice(0, 50));
+            };
+
+const smartWait = (ms, isFastMode = false) => {
+                return new Promise(resolve => {
+                    const finalMs = isFastMode ? ms * 0.5 : ms;
+                    setTimeout(resolve, finalMs / gameSpeed); // 应用倍速
+                });
+            };
+            const checkIsBoring = (gridToCheck) => {
+                if (gridToCheck.flat().some(c => c.id === 88)) return false;
+                const scatterCount = gridToCheck.flat().filter(c => c.id === 99).length;
+                if (scatterCount >= 3) return false;
+                const counts = {};
+                gridToCheck.flat().forEach(c => { if (c && c.type === 'normal') counts[c.id] = (counts[c.id] || 0) + 1; });
+                const hasWin = Object.values(counts).some(cnt => cnt >= 8);
+                if (hasWin) return false;
+                return true;
+            };
+            // [Core] 1. 生成劇本 (支援 FG 權重)
+            const calculateSpinSequence = (config, cheat) => {
+                const sequence = [];
+                const usedIds = new Set();
+                
+                let totalCascades = 0;
+                // ... (保留 cheat 判斷邏輯) ...
+                if (cheat && cheat.win !== undefined) {
+                    if (!cheat.win) return []; 
+                    if (cheat.cascades !== undefined && cheat.cascades !== null) {
+                        totalCascades = cheat.cascades;
+                    } else {
+                        const prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
+                        while (Math.random() < prob && totalCascades < 20) { totalCascades++; }
+                    }
+                } else {
+                const emptyRate = config.emptySpinProbability || 0.2;
+                if (Math.random() < emptyRate) return []; 
+                
+                // [修復] 將預設值改為 0.1 (10%)，防止配置讀取失敗時機率過高
+                let prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.1;
+                
+                // [日誌] 如果您是管理員，可以在這裡偷偷 console.log 一下 prob 確認
+                // console.log("Current Cascade Prob:", prob);
+
+                while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 1; }
+            }
+
+                // B. 分配每一輪的中獎符號
+                for (let i = 0; i <= totalCascades; i++) {
+                    let sym;
+                    let safe = 0;
+                    
+                    // 優先嘗試隨機權重
+                    do {
+                        sym = getRandomSymbolData(config);
+                        safe++;
+                        
+                        // [修改] 過濾條件：
+                        // 1. 排除 ID 88 (倍數球)
+                        // 2. 排除已使用的 ID
+                        // 3. 只有在第一輪 (i===0) 才允許抽中 ID 99 (FG)
+                        //    (防止連消中途突然跑出 FG，通常 FG 是起始觸發)
+                        let isInvalid = false;
+                        if (sym.id === 88) isInvalid = true;
+                        if (usedIds.has(sym.id)) isInvalid = true;
+                        if (sym.id === 99 && i > 0) isInvalid = true; 
+                        if (sym.id > 9 && sym.id !== 99) isInvalid = true; // 排除其他未知 ID
+
+                        if (!isInvalid) break;
+                    } while (safe < 20);
+                    
+                    // [保底] 隨機失敗時的處理
+                    if (sym.id === 88 || (sym.id === 99 && i > 0) || (sym.id > 9 && sym.id !== 99) || usedIds.has(sym.id)) {
+                        const available = [1,2,3,4,5,6,7,8,9].filter(id => !usedIds.has(id));
+                        if (available.length > 0) {
+                            sym = { id: available[Math.floor(Math.random() * available.length)] };
+                        } else {
+                            sym = { id: 1 }; 
+                        }
+                    }
+                    
+                    sequence.push(sym.id);
+                    usedIds.add(sym.id);
+
+                    // [新增] 如果抽中 FG (99)，直接結束劇本生成
+                    // 因為 FG 觸發後不會接續普通連消
+                    if (sym.id === 99) {
+                        break;
+                    }
+                }
+                return sequence;
+            };
+
+            // [Core] 2. 生成種子盤面 (支援 FG 限制)
+            const generateSeededGrid = (sequence, config, isFG = false) => {
+                const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+                const cells = [];
+                for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) cells.push({r,c});
+                
+                const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+                shuffle(cells);
+
+                // A. 放置首局贏家 (支援 FG 4顆)
+                if (sequence.length > 0) {
+                    const winId = sequence[0];
+                    
+                    // [修改] 如果劇本是 FG (99)，固定放 4 個；如果是普通符號，放 8-9 個
+                    const count = (winId === 99) ? 4 : (8 + Math.floor(Math.random() * 2));
+
+                    for(let i=0; i<count; i++) {
+                        if(cells.length === 0) break;
+                        const pos = cells.pop();
+                        // [修復] 添加 isNew: true 觸發下落動畫
+                        grid[pos.r][pos.c] = { ...SYMBOLS_DEF.find(s => s.id === winId), key: Math.random().toString(36), isNew: true };
+                    }
+                }
+
+                // B. 放置后续赢家 (种子)
+                for (let i = 1; i < sequence.length; i++) {
+                    const futureId = sequence[i];
+                    const seedCount = 5 + Math.floor(Math.random() * 2);
+                    for(let k=0; k<seedCount; k++) {
+                        if(cells.length === 0) break;
+                        const pos = cells.pop();
+                        grid[pos.r][pos.c] = { ...SYMBOLS_DEF.find(s => s.id === futureId), key: Math.random().toString(36), isNew: true };
+                    }
+                }
+
+                // [修復] C. 填充剩餘空位 (支援 FG 數量限制)
+                const bannedIds = new Set([...sequence, 88]); 
+                const scatterLimit = isFG ? 3 : 4; // FG限3個，主遊戲限4個
+                
+                const currentCounts = {};
+                grid.flat().forEach(c => { if(c && c.id) currentCounts[c.id] = (currentCounts[c.id] || 0) + 1; });
+
+                while(cells.length > 0) {
+                    const pos = cells.pop();
+                    let sym = null;
+                    let safe = 0;
+                    do { 
+                        let candidate = getRandomSymbolData(config); 
+                        
+                        if (bannedIds.has(candidate.id) || candidate.id === 88) {
+                            candidate = null;
+                        } else {
+                            const cnt = currentCounts[candidate.id] || 0;
+                            
+                            // [修復] 嚴格防止意外 FG：如果劇本首局不是贏 FG (99)，則隨機 Scatter 上限為 3
+                            const isScriptedFG = (sequence.length > 0 && sequence[0] === 99);
+                            if (candidate.id === 99 && !isScriptedFG && cnt >= 3) {
+                                candidate = null;
+                            }
+                            // 普通符號限制
+                            else if (candidate.id !== 99 && cnt >= 7) {
+                                candidate = null;
+                            }
+                        }
+
+                        if(candidate) sym = candidate;
+                        safe++;
+                    } while(!sym && safe < 30);
+                    
+                    if (!sym) sym = { ...SYMBOLS_DEF[0] };
+                    currentCounts[sym.id] = (currentCounts[sym.id] || 0) + 1;
+                    grid[pos.r][pos.c] = { ...sym, key: Math.random().toString(36), isNew: true };
+                }
+
+                return grid;
+            };
+
+            // ---------------------------------------------------------
+            // 核心逻辑 1: 开始旋转
+            // ---------------------------------------------------------
+            // Logic
+            // Logic (智能剧本版)
+            const startSpin = async (forceType = null, isBuy = false, buyCost = 0, cheatConfig = null) => {
+                if (isSpinning) return;
+                try {
+                    const cost = isBuy ? buyCost : bet;
+                    if (!freeGame.active && user.balance < cost && !forceType && !cheatConfig) { setAutoSpin(false); alert("余额不足！"); return; }
+                    
+                    setIsSpinning(true); setShowBuyModal(false); setUiState(prev => ({ ...prev, currentWin: 0, winMult: 0, displayWinText: "0.00" })); setFloatingTexts([]); setEliminatingCells(new Set()); setLasers([]); setShowFGTrigger(false); setBetMenuOpen(null); setLightningStrikes(new Set()); setIsManCasting(false); setIsWomanCasting(false); setGrid(Array(ROWS).fill(null).map(() => Array(COLS).fill(null)));
+                    
+                    let currentBalance = user.balance;
+                    if (!freeGame.active) { currentBalance -= cost; onUpdateBalance(currentBalance); } else { setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft - 1 })); }
+                    
+                    updateDoc(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), { status: 'spinning' });
+                    playSound('spin'); await new Promise(r => setTimeout(r, 50 / gameSpeed));
+
+                    const activeCfg = configRef.current;
+// ★★★ [新增] 偵測並顯示當前連消機率 ★★★
+                    if (user.role === 'admin') {
+                        const currentProb = activeCfg.cascadeProbability !== undefined ? activeCfg.cascadeProbability : 0.1;
+                        // 只在連消機率異常高 (> 20%) 時發出警告，或每次都顯示
+                        if (currentProb > 0.2) addLog(`⚠️ 警告：連消機率過高 ${(currentProb*100).toFixed(0)}%`, 'error');
+                        else addLog(`ℹ️ 當前連消設定: ${(currentProb*100).toFixed(0)}%`, 'gray');
+                    }
+                    let spinSequence = []; // [ID1, ID2, ID3]
+                    let gridToDisplay;
+
+                    // 1. 生成剧本
+                    if (isBuy || forceType === 'SCATTER') {
+                        // 购买/强制 FG 特殊处理
+                        gridToDisplay = generateRiggedGrid(activeCfg, 'SCATTER');
+                        spinSequence = []; // FG 触发本身不算消除序列
+                        addLog(`🛒 购买/强制 FG`, 'gold');
+                    } else if (forceType === 'BIG_WIN') {
+                        // 強制大獎 (走機率劇本) - cascades: null 會觸發機率判定
+                        spinSequence = calculateSpinSequence(activeCfg, { win: true, cascades: null });
+                        gridToDisplay = generateSeededGrid(spinSequence, activeCfg, freeGame.active); // [修復] 傳入配置與 FG 狀態
+                    } else {
+                        // 正常/上帝模式 (核心邏輯)
+                        spinSequence = calculateSpinSequence(activeCfg, cheatConfig);
+                        if (spinSequence.length > 0) {
+                            gridToDisplay = generateSeededGrid(spinSequence, activeCfg, freeGame.active); // [修復] 傳入配置與 FG 狀態
+                            if (user.role === 'admin') addLog(`📜 劇本: [${spinSequence.join(' -> ')}]`, 'success');
+                        } else {
+                            gridToDisplay = generateLosingGrid(activeCfg);
+                            if (user.role === 'admin') addLog(`💀 剧本: 空转`, 'gray');
+                        }
+                    }
+
+                    let gridForLogic = gridToDisplay;
+                    let smashHappened = false;
+                    
+                    setGrid(gridToDisplay);
+                    syncTableGrid(gridToDisplay, []);
+
+                    // 2. 初始砸球 (全剧本保护 + 假象诱惑)
+                    const protectedIds = new Set(spinSequence); 
+                    
+                    // [新增] 判断是否为空转局 (制造假象的时机)
+                    const isFakeTease = spinSequence.length === 0;
+
+                    // [设定] 如果是假象局，砸球机率设为 50%，否则读取设定档
+                    let smashRate = activeCfg.smashProbability !== undefined ? activeCfg.smashProbability : 0.3;
+                    if (isFakeTease) smashRate = 0.5;
+
+                    const candidates = [];
+                    gridToDisplay.forEach((row, r) => { 
+                        row.forEach((cell, c) => { 
+                            if (cell && cell.id <= 9 && !protectedIds.has(cell.id)) {
+                                candidates.push({ r, c }); 
+                            }
+                        }); 
+                    });
+
+                    if (Math.random() < smashRate && candidates.length > 0) {
+                        let smashCount = 1;
+
+                        // [逻辑分支] 假象 vs 真实
+                        if (isFakeTease) {
+                            // ★ 假象模式：数量 1-6 颗平均分配 (Uniform)
+                            smashCount = Math.floor(Math.random() * 6) + 1;
+                        } else {
+                            // ★ 真实模式：依照权重表
+                            smashCount = getSmashCount(activeCfg);
+                        }
+                        
+                        smashCount = Math.min(smashCount, candidates.length);
+                        
+                        const targetCoords = [];
+                        for (let i = 0; i < smashCount; i++) { 
+                            const randIdx = Math.floor(Math.random() * candidates.length); 
+                            targetCoords.push(candidates[randIdx]); 
+                            candidates.splice(randIdx, 1); 
+                        }
+                        
+                        const delayStrike = 150 / gameSpeed; const delayReveal = 550 / gameSpeed; const delayClear = 950 / gameSpeed;
+                        
+                        setTimeout(() => { 
+                            const newStrikes = new Set(); 
+                            targetCoords.forEach(t => newStrikes.add(`${t.r}-${t.c}`)); 
+                            setLightningStrikes(newStrikes); 
+                            const hasLeft = targetCoords.some(t => t.c < 3); 
+                            const hasRight = targetCoords.some(t => t.c >= 3); 
+                            if (hasLeft) { playSound('man'); setIsManCasting(true); } 
+                            if (hasRight) { playSound('woman'); setIsWomanCasting(true); } 
+                        }, delayStrike);
+                        
+                        const smashedGrid = gridToDisplay.map(row => row.map(cell => ({ ...cell })));
+                        
+                        // [假象倍数池] 平均分配的高倍数诱饵 (2x 到 500x)
+                        const fakePool = [2, 5, 10, 25, 50, 100, 500];
+
+                        targetCoords.forEach(t => { 
+                            let selectedVal;
+                            
+                            if (isFakeTease) {
+                                // ★ 假象模式：倍数平均分配 (从池中随机抽，不看权重)
+                                // 这样 500x 和 2x 的出现机率一样，极大增加诱惑力
+                                selectedVal = fakePool[Math.floor(Math.random() * fakePool.length)];
+                            } else {
+                                // ★ 真实模式：依照权重表
+                                selectedVal = getRandomMultiplierSmart(activeCfg);
+                            }
+
+                            smashedGrid[t.r][t.c] = { 
+                                ...smashedGrid[t.r][t.c], 
+                                id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier', 
+                                val: selectedVal, isJustRevealed: true, isNew: false 
+                            }; 
+                        });
+                        
+                        gridForLogic = smashedGrid;
+                        setTimeout(() => { setGrid(smashedGrid); }, delayReveal);
+                        setTimeout(() => { setLightningStrikes(new Set()); setIsManCasting(false); setIsWomanCasting(false); }, delayClear);
+                        smashHappened = true;
+                    }
+
+                    const baseWait = 800; const totalWait = smashHappened ? Math.max(baseWait, 1100) : baseWait;
+                    await new Promise(r => setTimeout(r, totalWait / gameSpeed));
+                    
+                    // 3. 传递剧本给视觉逻辑
+                    await processVisualLogic(gridForLogic, activeCfg, currentBalance, spinSequence.length===0, smashHappened, cost, spinSequence);
+                } catch (error) { console.error(error); setIsSpinning(false); setAutoSpin(false); }
+            };
+
+            // ---------------------------------------------------------
+            // 核心逻辑 2: 消除与掉落循环
+            // ---------------------------------------------------------
+           // [核心逻辑] 视觉与掉落处理 (剧本执行版)
+            const processVisualLogic = async (initialGrid, activeCfg, startBalance, isEmptyGame, skipFirstSmash = false, currentCost = 0, spinSequence = []) => {
+                let currentGrid = JSON.parse(JSON.stringify(initialGrid)); 
+                let keepPlaying = true; 
+                let roundWin = 0; 
+                let loop = 0; 
+                let runningBalance = startBalance;
+                
+                // 剧本指针：spinSequence[0] 是第一轮赢家，spinSequence[1] 是第二轮...
+                // 第一轮已经在 startSpin 里生成好了，所以这里主要处理后续的掉落
+                
+                const smashRate = activeCfg.smashProbability !== undefined ? activeCfg.smashProbability : 0.3;
+
+                while (keepPlaying && loop < 20) {
+                    loop++;
+
+                    // --- 1. 砸球阶段 (Smash) ---
+                    if (!(loop === 1 && skipFirstSmash)) {
+                        const shouldSmash = Math.random() < smashRate;
+                        
+                        // 保护名单：剩余剧本里的所有赢家都不能砸
+                        // 例如当前是第2轮(loop=2)，那么 sequence[1] 是当前赢家，sequence[2...] 是未来赢家
+                        const currentTargetId = spinSequence[loop-1]; // 注意下标
+                        const futureTargetIds = spinSequence.slice(loop);
+                        const protectedIds = new Set([currentTargetId, ...futureTargetIds].filter(x => x));
+
+                        const candidates = [];
+                        currentGrid.forEach((row, r) => { 
+                            row.forEach((cell, c) => { 
+                                if (cell && cell.id <= 9 && !protectedIds.has(cell.id)) {
+                                    candidates.push({ r, c }); 
+                                }
+                            }); 
+                        });
+
+                        if (shouldSmash && candidates.length > 0) {
+                            // [修改] 决定砸几颗球 (1-6)
+                            let smashCount = getSmashCount(activeCfg);
+                            // 确保不超过当前可用符號数
+                            smashCount = Math.min(smashCount, candidates.length);
+
+                            // 随机选取 smashCount 个目标
+                            const targetCoords = [];
+                            const tempCandidates = [...candidates];
+                            for (let i = 0; i < smashCount; i++) {
+                                const randIdx = Math.floor(Math.random() * tempCandidates.length);
+                                targetCoords.push(tempCandidates[randIdx]);
+                                tempCandidates.splice(randIdx, 1);
+                            }
+
+                            // 触发特效 (针对所有目标)
+                            const newStrikes = new Set();
+                            targetCoords.forEach(t => newStrikes.add(`${t.r}-${t.c}`));
+                            setLightningStrikes(newStrikes);
+                            
+                            const hasLeft = targetCoords.some(t => t.c < 3);
+                            const hasRight = targetCoords.some(t => t.c >= 3);
+                            if(hasLeft) { setIsManCasting(true); playSound('man'); }
+                            if(hasRight) { setIsWomanCasting(true); playSound('woman'); }
+                            
+                            await smartWait(400, isEmptyGame);
+
+                            // 转换所有目标为倍数球
+                            targetCoords.forEach(t => {
+                                // [修改] 使用新的分层级倍数生成
+                                const selectedVal = getRandomMultiplierSmart(activeCfg);
+                                currentGrid[t.r][t.c] = { 
+                                    id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier', 
+                                    val: selectedVal, 
+                                    key: Math.random().toString(36), isNew: false, isJustRevealed: true 
+                                };
+                            });
+
+                            setGrid([...currentGrid]); syncTableGrid([...currentGrid]);
+                            await smartWait(400, isEmptyGame); 
+                            setLightningStrikes(new Set()); setIsManCasting(false); setIsWomanCasting(false); 
+                            await smartWait(200, isEmptyGame);
+                        }
+                    }
+
+                    // --- 2. 消除结算阶段 ---
+                    const finalCounts = {};
+                    currentGrid.flat().forEach(c => { if (c && c.type === 'normal') finalCounts[c.id] = (finalCounts[c.id] || 0) + 1; });
+                    // [修改] 嚴格劇本控制：只允許消除當前劇本步驟指定的 ID
+                    let winIds = Object.keys(finalCounts).filter(id => finalCounts[id] >= 8);
+
+                                        if (spinSequence && spinSequence.length > 0) {
+                        const targetScriptId = spinSequence[loop - 1];
+                        
+                        if (targetScriptId) {
+                            winIds = winIds.filter(id => Number(id) === Number(targetScriptId));
+                        } else {
+                            winIds = []; 
+                        }
+                    } else {
+                        // ★★★【必須補上這裡】★★★
+                        // 無劇本 (空轉局)：強制清空盤面上所有的隨機中獎！
+                        // 這行代碼是阻止無限連消的守門員
+                        winIds = [];
+                    }
+
+                    if (winIds.length === 0) { keepPlaying = false; break; }
+
+
+                    const currentEliminatingSet = new Set(); const currentRoundTexts = []; let batchWin = 0; let totalR = 0; let totalC = 0; let totalEliminatedCount = 0;
+                    winIds.forEach(targetId => {
+                        const count = finalCounts[targetId]; const basePay = getPayout(parseInt(targetId), count); batchWin += bet * basePay; 
+                        currentGrid.forEach((row, r) => { row.forEach((col, c) => { if (col && String(col.id) === String(targetId)) { currentEliminatingSet.add(`${r}-${c}`); totalR += r; totalC += c; totalEliminatedCount++; } }); });
+                    });
+
+                    if (batchWin > 0) { 
+                        playSound('win'); 
+                        const avgR = totalR/totalEliminatedCount; const avgC = totalC/totalEliminatedCount; 
+                        currentRoundTexts.push({id: Math.random(), r: avgR, c: avgC, val: batchWin.toFixed(1)}); 
+                        if (user.role === 'admin') addLog(`💰 R${loop}赢: ${batchWin.toFixed(1)}`, 'success');
+                    } else if (totalEliminatedCount > 0) { if (user.role === 'admin') addLog(`⚠️ R${loop}: 消除但0分`, 'error'); }
+
+                    setEliminatingCells(currentEliminatingSet); syncTableGrid(currentGrid, Array.from(currentEliminatingSet)); setFloatingTexts(prev => [...prev, ...currentRoundTexts]); 
+                    const nextTotalWin = roundWin + batchWin; roundWin = nextTotalWin; setUiState(prev => ({ ...prev, currentWin: nextTotalWin, displayWinText: nextTotalWin.toFixed(2) }));
+                    await smartWait(2050, isEmptyGame);
+                    currentGrid = currentGrid.map((row, r) => row.map((c, colIdx) => (c && currentEliminatingSet.has(`${r}-${colIdx}`)) ? null : c));
+                    setGrid([...currentGrid]); setEliminatingCells(new Set());
+
+                    // --- 3. 掉落填充階段 (劇本執行) ---
+                    // [修復] 預先統計盤面殘留符號數量，防止隨機填充導致意外消除
+                    const boardCounts = {};
+                    currentGrid.flat().forEach(c => { if(c && c.id) boardCounts[c.id] = (boardCounts[c.id] || 0) + 1; });
+
+                    const nextTargetId = spinSequence[loop]; 
+                    let forceWinSymbol = null;
+                    let neededCount = 0;
+
+                    if (nextTargetId) {
+                        let existingCount = boardCounts[nextTargetId] || 0;
+                        neededCount = Math.max(0, 8 - existingCount);
+                        forceWinSymbol = SYMBOLS_DEF.find(s => s.id === nextTargetId);
+                        if (user.role === 'admin') addLog(`🎯 下輪目標: ID ${nextTargetId} (存${existingCount} + 補${neededCount})`, 'gold');
+                    }
+
+                    const nextGrid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+                    let predictedScatterCount = boardCounts[99] || 0;
+
+                    for (let c = 0; c < COLS; c++) {
+                        let colData = []; for (let r = 0; r < ROWS; r++) { if (currentGrid[r][c]) { colData.push({ ...currentGrid[r][c], isNew: false, oldRow: r }); } }
+                        
+                        while (colData.length < ROWS) {
+                            let sym = null; 
+                            
+                            // A. 優先填充劇本目標 (強制補足)
+                            if (neededCount > 0) { 
+                                sym = { ...forceWinSymbol }; 
+                                neededCount--;
+                            } 
+                            // B. 隨機填充 (遵循設定機率 & 允許 FG)
+                            else {
+                                // [修改] 這裡移除了 99，允許 Scatter 掉落
+                                const bannedIds = new Set([...spinSequence.slice(loop), 88]);
+                                let safety = 0;
+                                do {
+                                    // [修改] 改回使用 getRandomSymbolData (權重)，這樣 Scatter 就會依照設定的機率 (如 2%) 出現
+                                    let candidate = getRandomSymbolData(activeCfg);
+                                    
+                                    // 基礎過濾
+                                    if (bannedIds.has(candidate.id)) {
+                                        candidate = null;
+                                    }
+                                    // [修復] 嚴格防止意外 FG：如果下一輪目標不是 FG (99)，則盤面 Scatter 總數不得 >= 4
+                                    // (predictedScatterCount 包含盤面現有 + 預計掉落)
+                                    else if (candidate.id === 99) {
+                                        const isNextScriptFG = (nextTargetId === 99);
+                                        // 如果不是劇本指定的 FG，且數量即將達標 (3+1=4)，則禁止生成
+                                        if (!isNextScriptFG && predictedScatterCount >= 3) {
+                                            candidate = null;
+                                        }
+                                        // 額外保險：就算是劇本 FG，也不要一次掉太多導致超過 4 個 (視需求可調整)
+                                        else if (predictedScatterCount >= 4) {
+                                            candidate = null;
+                                        }
+                                    }
+                                    // 數量控管 (防止意外消除)
+                                    else {
+                                        const currentCnt = boardCounts[candidate.id] || 0;
+                                        if (candidate.id !== nextTargetId && currentCnt >= 7) {
+                                            candidate = null;
+                                        }
+                                    }
+
+                                    if(candidate) sym = candidate;
+                                    safety++;
+                                } while (!sym && safety < 50);
+                                
+                                if (!sym) sym = { ...SYMBOLS_DEF.find(s => s.id === 1) };
+                            }
+
+                            // 更新實時計數
+                            boardCounts[sym.id] = (boardCounts[sym.id] || 0) + 1;
+                            if (sym.id === 99) predictedScatterCount++;
+
+                            colData.unshift({ ...sym, key: Math.random().toString(36), isNew: true });
+                        }
+                        for (let r = 0; r < ROWS; r++) { const sym = colData[r]; if (!sym.isNew) { sym.isDropping = (r !== sym.oldRow); } nextGrid[r][c] = sym; }
+                    }
+
+                    setIsFastDrop(false); playSound('drop'); currentGrid = nextGrid; setGrid(currentGrid); syncTableGrid(currentGrid, []); setFloatingTexts([]); await smartWait(800, isEmptyGame);
+                }
+
+                // --- 4. 最终结算 ---
+                const mults = currentGrid.flat().filter(c => c && c.id === 88);
+                const totalMultOnBoard = mults.reduce((a, b) => a + b.val, 0);
+                let finalMult = 1; let actualMultToApply = 0;
+
+                if (freeGame.active) {
+                    if (roundWin > 0) { const newAcc = freeGame.accMult + totalMultOnBoard; setFreeGame(prev => ({ ...prev, accMult: newAcc })); finalMult = newAcc > 0 ? newAcc : 1; actualMultToApply = newAcc; } 
+                    else { finalMult = freeGame.accMult > 0 ? freeGame.accMult : 1; }
+                } else {
+                    finalMult = totalMultOnBoard > 0 ? totalMultOnBoard : 1; actualMultToApply = totalMultOnBoard;
+                }
+
+                if (roundWin > 0 && totalMultOnBoard > 0) {
+                    const targetEl = topBarRef.current;
+                    if (targetEl) {
+                        const targetPos = getCenter(targetEl); const newLasers = []; document.querySelectorAll('[data-symbol-id="88"]').forEach((el) => { const srcPos = getCenter(el); newLasers.push({ id: Math.random(), x1: srcPos.x, y1: srcPos.y, x2: targetPos.x, y2: targetPos.y }); });
+                        if (newLasers.length > 0) { setLasers(newLasers); playSound('bigwin'); setUiState(prev => ({ ...prev, displayWinText: `x ${actualMultToApply}` })); await smartWait(800, isEmptyGame); setLasers([]); }
+                    }
+                }
+
+                finalMult = Math.max(1, finalMult); setUiState(prev => ({ ...prev, winMult: finalMult > 1 ? finalMult : 0 }));
+                const finalWin = roundWin * finalMult;
+
+                if (finalWin > 0) {
+                    runningBalance += finalWin; onUpdateBalance(runningBalance); setUiState(prev => ({ ...prev, currentWin: finalWin, displayWinText: finalWin.toFixed(2) }));
+                    if (freeGame.active) setFreeGame(prev => ({ ...prev, totalWin: prev.totalWin + finalWin }));
+                    addLog(`🏆 赢分: ${finalWin.toFixed(0)} (x${finalMult})`, 'success');
+                    if (finalWin >= bet * 20) { playSound('bigwin'); setShowBigWin(finalWin); await smartWait(5000, false); setShowBigWin(null); } else if (finalWin > bet * 5) { playSound('bigwin'); await smartWait(1500, isEmptyGame); } else { await smartWait(500, isEmptyGame); }
+                } else { setUiState(prev => ({ ...prev, displayWinText: roundWin > 0 ? roundWin.toFixed(2) : "0.00" })); }
+
+                updateDoc(doc(db, 'apps', APP_ID, 'tables', `table_${tableId}`), { status: 'occupied' });
+
+                const finalScattersCount = currentGrid.flat().filter(c => c && c.id === 99).length;
+                const triggerFG = !freeGame.active && finalScattersCount >= 4;
+                const triggerRetrigger = freeGame.active && finalScattersCount >= 3;
+                const isFGWin = freeGame.active && finalWin > 0;
+
+                if (currentCost > 0 || finalWin > 0) { saveGameStats(currentCost, finalWin, finalMult, triggerFG, isFGWin); }
+
+                if (triggerFG) { addLog("✨ 触发 Free Game", 'gold'); setShowFGTrigger(true); playSound('bigwin'); await smartWait(3000, false); setShowFGTrigger(false); setFreeGame({ active: true, spinsLeft: 15, accMult: 0, totalWin: 0 }); } 
+                else if (triggerRetrigger) { addLog("🔄 Retrigger +3 Spins", 'gold'); setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft + 3 })); playSound('bigwin'); await smartWait(1000, false); }
+
+                setIsSpinning(false);
+            };
+
+            const endFreeGame = () => {
+                setFreeGame(prev => ({ ...prev, active: false }));
+                setIsSpinning(false); setAutoSpin(false); alert(`免费游戏结束！总分: ${Math.floor(freeGame.totalWin)}`);
+            };
+
+// ---------------------------------------------------------
+            // Render UI
+            // ---------------------------------------------------------
+            return (
+                <div 
+                    className="fixed inset-0 w-full h-[100dvh] bg-black font-roboto select-none flex flex-col landscape:flex-row overflow-hidden text-white"
+                    style={{ '--speed-factor': gameSpeed }}
+                >
+                    {/* [新增] 竖屏旋转提示遮罩 (仅竖屏显示) */}
+                    <div className="fixed inset-0 z-[9999] bg-[#0f0500] flex flex-col items-center justify-center landscape:hidden font-noto text-center p-8 animate-in fade-in duration-500">
+                        <div className="relative mb-8">
+                            <Smartphone size={80} className="text-gray-700" />
+                            <RotateCw size={40} className="text-[#fbbf24] absolute -right-2 -bottom-2 animate-spin duration-[3s]" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-[#fbbf24] mb-3 font-cinzel">PLEASE ROTATE</h2>
+                        <p className="text-gray-400 text-sm tracking-widest uppercase">为了获得最佳体验<br/>请旋转您的设备至横屏模式</p>
+                    </div>
+
+                    {betMenuOpen && <div className="fixed inset-0 z-[60]" onClick={() => setBetMenuOpen(null)}></div>}
+{/* Modals */}
+                    <PlayerStatsModal 
+                        isOpen={showStatsModal} 
+                        onClose={() => setShowStatsModal(false)} 
+                        history={playHistory} 
+                        globalStats={globalStats}
+                        todayStats={todayStats}
+                    />                    <SimulatorModal isOpen={showSimModal} onClose={() => setShowSimModal(false)} config={configRef.current} />
+                    <BuyBonusModal
+                        isOpen={showBuyModal}
+                        onClose={() => setShowBuyModal(false)}
+                        bet={bet}
+                        onBuy={(cost) => startSpin(null, true, cost)}
+                        playSound={playSound}
+                    />
+                    {showBigWin && <BigWinOverlay winAmount={showBigWin} onClose={() => setShowBigWin(null)} />}
+
+                    {/* Lasers */}
+                    {lasers.length > 0 && (
+                        <svg className="absolute inset-0 w-full h-full pointer-events-none z-[9999] overflow-visible">
+                            <defs>
+                                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                                    <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+                                    <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                                </filter>
+                            </defs>
+                            {lasers.map(laser => (
+                                <line key={laser.id} x1={laser.x1} y1={laser.y1} x2={laser.x2} y2={laser.y2} stroke="#fbbf24" strokeWidth="6" strokeLinecap="round" filter="url(#glow)" className="animate-laser-shot" />
+                            ))}
+                        </svg>
+                    )}
+
+                    {/* Logger */}
+                    {user.role === 'admin' && (
+                        <FloatingLogger
+                            logs={logs}
+                            visible={showLogger}
+                            onToggle={() => setShowLogger(!showLogger)}
+                        />
+                    )}
+
+                    {/* Top Buttons (Landscape) */}
+                    <div className="hidden landscape:flex fixed top-2 right-2 z-50 gap-2 items-start">
+                        <div className="relative flex flex-col items-end">
+                            <button
+                                onClick={() => setShowVolumePanel(!showVolumePanel)}
+                                className={`p-2 rounded-full border transition-colors ${showVolumePanel || bgmVolume > 0 ? 'bg-emerald-900/50 border-emerald-500 text-emerald-400' : 'bg-black/50 border-gray-500 text-gray-400'}`}
+                            >
+                                {bgmVolume > 0 ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                            </button>
+                            {showVolumePanel && (
+                                <div className="absolute top-10 right-0 bg-[#1c1917] border border-[#fbbf24]/30 p-4 rounded-xl shadow-2xl flex flex-col gap-4 w-48 animate-in fade-in slide-in-from-top-2 z-[60]">
+                                    <div className="space-y-1"><div className="flex justify-between text-xs text-[#fbbf24] font-bold"><span>Music</span><span>{Math.round(bgmVolume * 100)}%</span></div><input type="range" min="0" max="1" step="0.05" value={bgmVolume} onChange={(e) => setBgmVolume(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#fbbf24]" /></div>
+                                    <div className="space-y-1"><div className="flex justify-between text-xs text-emerald-400 font-bold"><span>Sound</span><span>{Math.round(sfxVolume * 100)}%</span></div><input type="range" min="0" max="1" step="0.05" value={sfxVolume} onChange={(e) => setSfxVolume(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" /></div>
+                                </div>
+                            )}
+                        </div>
+
+<button onClick={() => setShowStatsModal(!showStatsModal)} className="bg-black/50 text-blue-400 p-2 rounded-full border border-blue-500/30">
+                            <BarChart2 size={14} />
+                        </button>
+
+                        {/* Speed Control Button */}
+                        <div className="relative flex flex-col items-end">
+                            <button
+                                onClick={() => setShowSpeedPanel(!showSpeedPanel)}
+                                className={`p-2 rounded-full border transition-colors ${gameSpeed > 1 ? 'bg-yellow-900/50 border-yellow-500 text-yellow-400' : 'bg-black/50 border-gray-500 text-gray-400'}`}
+                            >
+                                <ChevronsRight size={14} />
+                                {gameSpeed > 1 && <span className="absolute -bottom-1 -right-1 bg-yellow-500 text-black text-[8px] font-bold px-1 rounded-full">{gameSpeed}x</span>}
+                            </button>
+                            {showSpeedPanel && (
+                                <div className="absolute top-10 right-0 bg-[#1c1917] border border-[#fbbf24]/30 p-4 rounded-xl shadow-2xl flex flex-col gap-4 w-48 animate-in fade-in slide-in-from-top-2 z-[60]">
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between text-xs text-[#fbbf24] font-bold">
+                                            <span>Speed</span>
+                                            <span>{gameSpeed}x</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="1" max="10" step="1" 
+                                            value={gameSpeed} 
+                                            onChange={(e) => setGameSpeed(Number(e.target.value))} 
+                                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#fbbf24]" 
+                                        />
+                                        <div className="flex justify-between text-[10px] text-gray-500 font-mono">
+                                            <span>1x</span><span>5x</span><span>10x</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {user.role === 'admin' && (
+                            <button onClick={() => setIsAdminOpen(!isAdminOpen)} className="bg-black/50 text-[#fbbf24] p-2 rounded-full border border-[#fbbf24]/30">
+                                <Settings size={14} />
+                            </button>
+                        )}
+                        <button onClick={onLeaveTable} className="bg-black/50 text-rose-400 p-2 rounded-full border border-rose-500/30">
+                            <LogOut size={14} />
+                        </button>
+                    </div>
+
+                    {/* GAME VIEW AREA */}
+                    <div className={`relative flex-grow flex flex-col items-center justify-center p-2 landscape:p-0 landscape:pb-8 overflow-hidden w-full`}>
+
+                        {/* Background & Characters */}
+                        {/* [修改] 替換為金色背景圖 */}
+                        <div className="absolute inset-0 z-0 bg-black">
+                            <img src="./images/golden-seth.jpg" alt="Background" className="w-full h-full object-cover opacity-60" />
+                            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80"></div>
+                        </div>
+                        
+                        {/* [新增] 背景呼吸光效层 */}
+                        <div className="bg-breathing-light"></div>
+
+                       {/* [优化] 手机端人物向中间靠拢 (10%) */}
+                        <img src="./images/man.png" alt="Character Left" className={`hidden landscape:block absolute left-[10%] lg:left-[2%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isManCasting ? 'animate-character-cast' : ''}`} />
+                        <img src="./images/woman.png" alt="Character Right" className={`hidden landscape:block absolute right-[10%] lg:right-[4%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isWomanCasting ? 'animate-character-cast' : ''}`} style={{ transform: 'translateY(-50%)' }} />                        {/* FG Info */}
+                        {/* FG Info (Responsive Fix) */}
+                        {freeGame.active && (
+                            <div className="absolute z-40 animate-bounce-drop pointer-events-none
+                                left-2 top-20 scale-50 origin-top-left 
+                                lg:left-24 lg:top-1/2 lg:-translate-y-1/2 lg:scale-100 lg:origin-center">
+                                <div className="flex flex-col items-center justify-center filter drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]">
+                                    <div className="text-9xl font-black text-transparent bg-clip-text bg-gradient-to-b from-[#fff7ed] via-[#fbbf24] to-[#b45309] drop-shadow-[0_5px_0_#78350f] font-cinzel tracking-tighter leading-[0.8]">{freeGame.spinsLeft}</div>
+                                    <div className="flex flex-col items-center mt-4 space-y-[-5px]">
+                                        <span className="text-3xl font-black text-[#fbbf24] drop-shadow-[0_2px_0_black] font-cinzel tracking-[0.2em]">FREE</span>
+                                        <span className="text-3xl font-black text-[#fbbf24] drop-shadow-[0_2px_0_black] font-cinzel tracking-[0.2em]">GAMES</span>
+                                    </div>
+                                    <div className="mt-6 bg-black/80 border-2 border-[#fbbf24] px-6 py-2 rounded-full backdrop-blur-md shadow-xl">
+                                        <span className="text-sm text-gray-300 uppercase mr-2 font-bold">Total Win</span>
+                                        <span className="text-2xl font-mono text-white font-black tracking-widest">${Math.floor(freeGame.totalWin).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Buy Button */}
+                        {!freeGame.active && !isSpinning && (<div className="absolute left-2 top-2 z-30 lg:hidden landscape:hidden"><button onClick={() => { playSound('click'); setShowBuyModal(true); }} className="bg-[#b45309] border border-[#fbbf24] text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1"><ShoppingCart size={12} /> BUY</button></div>)}
+{!freeGame.active && (<div className="hidden landscape:block absolute left-4 z-30"><button onClick={() => { playSound('click'); setShowBuyModal(true); }} disabled={isSpinning} className="flex flex-col items-center justify-center w-16 h-16 bg-gradient-to-b from-[#b45309] to-[#451a03] border-2 border-[#fbbf24] rounded-xl shadow-lg hover:scale-105 active:scale-95 transition-all group"><div className="text-sm text-[#fde047] font-black drop-shadow-md -mt-3 mb-1">BUY</div><ShoppingCart className="text-white w-6 h-6 group-hover:text-[#fbbf24] transition-colors" /></button></div>)}
+                        {/* Spin Controls */}
+                        {/* [优化] 手机横屏缩放按钮组，防止遮挡右上角退出键 */}
+                        <div className="hidden landscape:flex flex-col gap-3 absolute right-4 top-1/2 -translate-y-1/2 z-50 items-center landscape:scale-75 landscape:origin-right lg:landscape:scale-100">
+                            <button onClick={() => setAutoSpin(!autoSpin)} className={`w-10 h-10 rounded-full border flex items-center justify-center shadow-lg bg-black/60 backdrop-blur ${autoSpin ? 'border-emerald-500 text-emerald-400' : 'border-white/20 text-gray-400'}`}><RotateCw size={16} className={autoSpin ? 'animate-spin-btn' : ''} /></button>
+                            <div className="relative flex flex-col items-center bg-black/80 rounded-2xl border border-white/20 p-1 gap-1 backdrop-blur-md shadow-lg"><button disabled={isSpinning} onClick={(e) => { e.stopPropagation(); adjustBetSmart(1); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-white active:scale-90 transition-transform"><Plus size={14} /></button><div className="text-[#fbbf24] font-bold font-mono text-xs py-1 select-none min-w-[24px] text-center">{bet}</div><button disabled={isSpinning} onClick={(e) => { e.stopPropagation(); adjustBetSmart(-1); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-white active:scale-90 transition-transform"><Minus size={14} /></button></div>
+                            {!isSpectating ? (
+                                <button onClick={() => startSpin()} disabled={isSpinning && !autoSpin} className="w-20 h-20 rounded-full bg-gradient-to-b from-[#f59e0b] to-[#b45309] border-4 border-[#451a03] shadow-[0_5px_15px_rgba(0,0,0,0.5)] flex items-center justify-center active:scale-95 transition-transform hover:brightness-110">
+                                    {isSpinning ? <RotateCw className="animate-spin text-[#451a03]" size={28} /> : <Play className="fill-[#451a03] text-[#451a03] ml-1" size={32} />}
+                                </button>
+                            ) : (
+                                <div className="w-20 h-20 rounded-full bg-black/80 border-4 border-gray-600 flex flex-col items-center justify-center animate-pulse">
+                                    <Activity size={24} className="text-emerald-500" />
+                                    <span className="text-[8px] font-bold text-emerald-500 mt-1">LIVE</span>
+                                </div>
+                            )}
+                        </div>
+
+<div ref={topBarRef} className="relative z-20 w-full max-w-[95vw] md:max-w-[800px] h-10 md:h-16 mb-1 bg-black/60 border border-[#fbbf24]/30 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-sm transition-all"><div className={`text-3xl md:text-5xl font-black tracking-widest transition-all duration-200 ${lasers.length > 0 ? 'text-white scale-125 drop-shadow-[0_0_10px_white]' : 'text-[#fbbf24] drop-shadow-md'}`}>{uiState.displayWinText}</div></div>
+
+                        {/* [修改] 手机端(竖屏+横屏)全程显示左下角悬浮信息，仅在电脑端(lg)隐藏 */}
+                        <div className="absolute bottom-2 left-2 z-30 flex flex-col gap-1 lg:hidden pointer-events-none">
+                            <div className="bg-black/60 backdrop-blur-sm border border-white/10 px-3 py-1 rounded-lg shadow-lg">
+                                <div className="text-[8px] text-gray-400 uppercase font-bold">BALANCE</div>
+                                <div className="text-sm font-mono font-bold text-white">${Math.floor(user.balance).toLocaleString()}</div>
+                            </div>
+                            <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 px-3 py-1 rounded-lg shadow-lg">
+                                <div className="text-[8px] text-yellow-500 uppercase font-bold">WIN</div>
+                                <div className="text-sm font-mono font-bold text-[#fbbf24]">${Math.floor(freeGame.active ? freeGame.totalWin : uiState.currentWin).toLocaleString()}</div>
+                            </div>
+                        </div>
+
+                        {/* [修復] 限制橫屏最大寬度，防止遮擋左右按鈕 (桌面端解除限制) */}
+                        <div className="relative w-full max-w-[95vw] md:max-w-[800px] max-h-[65vh] landscape:max-h-none aspect-[4/3] landscape:w-auto landscape:h-[85%] landscape:aspect-[16/10] landscape:max-w-[65vw] lg:landscape:max-w-none z-20 transition-all duration-300">                            {showFGTrigger && (<div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-yellow-500 to-yellow-800 drop-shadow-[0_0_20px_rgba(255,215,0,0.8)] animate-bounce-drop font-cinzel tracking-tighter text-center leading-tight">FREE<br />GAMES</div></div>)}
+                            
+                            {freeGame.active && (<div className="absolute -right-2 -top-10 z-50 w-16 h-16 bg-[#2d1b0e] border-2 border-rose-500 rounded-xl flex flex-col items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.8)] animate-bounce-drop rotate-3"><div className="absolute -top-2 bg-rose-600 text-white text-[8px] font-bold px-2 rounded-full border border-rose-400">TOTAL</div><span className="text-2xl font-black text-white drop-shadow-md">{freeGame.accMult}x</span></div>)}
+
+                            <div className="w-full h-full bg-gradient-to-b from-[#0b1c38] via-[#2b5a7a] to-[#0b1c38] rounded-lg border-2 md:border-4 border-amber-600 shadow-[0_0_60px_rgba(0,0,0,0.9)] grid grid-cols-6 grid-rows-5 gap-px p-0.5 relative overflow-hidden ring-2 ring-[#fbbf24]/30">
+                                {(() => {
+                                    const scatterCount = grid.flat().filter(c => c && c.id === 99).length;
+                                    return grid.map((row, r) => (
+                                        row.map((cell, c) => {
+                                            const isEliminating = eliminatingCells.has(`${r}-${c}`);
+                                            // 计算属性传递给子组件，React.memo 会自动比对这些属性
+                                            const isSpecialScatter = cell && cell.id === 99 && scatterCount >= 4 && showFGTrigger;
+                                            const isJustRevealed = cell && cell.isJustRevealed;
+                                            const isStruck = lightningStrikes.has(`${r}-${c}`);
+
+                                            return (
+                                                <GridCell 
+                                                    key={`${r}-${c}-${cell ? cell.key : 'empty'}`} // 复合 Key 确保动画重置
+                                                    cell={cell}
+                                                    r={r} c={c}
+                                                    isEliminating={isEliminating}
+                                                    isSpecialScatter={isSpecialScatter}
+                                                    isJustRevealed={isJustRevealed}
+                                                    isStruck={isStruck}
+                                                    isSpinning={isSpinning}
+                                                    isFastDrop={isFastDrop}
+                                                    gameSpeed={gameSpeed}
+                                                />
+                                            );
+                                        })
+                                    ));
+                                })()}
+                                {floatingTexts.map(f => (<div key={f.id} className="absolute z-[200] font-black text-4xl md:text-6xl text-yellow-400 animate-group-win pointer-events-none select-none whitespace-nowrap font-noto drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] flex items-center justify-center" style={{ top: `calc(${f.r} * 20% + 10%)`, left: `calc(${f.c} * 16.666% + 8.333%)`, transform: 'translate(-50%, -50%)' }}>{f.val}</div>))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bottom Bar (Desktop Only) */}
+                    <div className="hidden lg:flex absolute bottom-0 w-full h-16 bg-black/90 border-t border-[#fbbf24]/30 z-50 items-center justify-center font-noto gap-12">
+                        <div className="flex items-center gap-4"><span className="text-[#fbbf24] font-black text-lg tracking-widest">餘額</span><span className="text-5xl font-black text-white font-mono drop-shadow-[0_0_15px_rgba(251,191,36,0.6)]">{Math.floor(user.balance).toLocaleString()}</span></div>
+                        <div className="flex items-center gap-4 absolute right-8 opacity-90"><span className="text-gray-400 font-bold text-sm">贏分</span><span className="text-3xl font-black text-[#fbbf24] font-mono">{Math.floor(freeGame.active ? freeGame.totalWin : uiState.currentWin)}</span></div>
+                    </div>
+
+{/* Portrait Bottom Controls */}
+                    {/* [优化] 增加底部 padding 确保不贴底 */}
+                    <div className="shrink-0 bg-[#0c0a09]/80 backdrop-blur border-t border-[#fbbf24]/20 relative z-30 shadow-lg pb-6 pt-2 landscape:hidden">
+                            <div className="flex flex-col items-center justify-between px-4 py-2 gap-2">
+                            <div className="flex w-full justify-between gap-2"><div className="bg-[#1c1917] px-2 py-1 rounded border border-white/5 flex-1 text-center"><div className="text-[8px] text-gray-500 font-bold tracking-wider font-noto">餘額</div><div className="text-sm font-mono text-white">{Math.floor(user.balance).toLocaleString()}</div></div><div className="bg-[#1c1917] px-2 py-1 rounded border border-yellow-900/30 flex-1 text-center"><div className="text-[8px] text-yellow-600 font-bold tracking-wider font-noto">贏分</div><div className="text-sm font-mono text-[#fbbf24]">{Math.floor(freeGame.active ? freeGame.totalWin : uiState.currentWin)}</div></div></div>
+                            <div className="flex w-full items-center justify-between gap-2">
+                                <button onClick={() => setAutoSpin(!autoSpin)} className={`w-10 h-10 rounded-full border flex items-center justify-center ${autoSpin ? 'bg-emerald-900/50 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}><RotateCw size={16} className={autoSpin ? 'animate-spin-btn' : ''} /></button>
+                                <div className="relative flex items-center bg-[#1c1917] rounded-full border border-white/10 p-1 gap-1 flex-grow max-w-[200px] justify-between"><button disabled={isSpinning} onClick={(e) => { e.stopPropagation(); adjustBetSmart(-1); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-90 transition-transform"><Minus size={12} /></button><div className="w-full text-center font-bold text-sm text-white select-none">{bet}</div><button disabled={isSpinning} onClick={(e) => { e.stopPropagation(); adjustBetSmart(1); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-90 transition-transform"><Plus size={12} /></button></div>
+                                <button onClick={() => startSpin()} disabled={isSpinning && !autoSpin} className="w-16 h-16 rounded-full bg-gradient-to-b from-[#f59e0b] to-[#b45309] border-2 border-[#451a03] shadow-xl flex items-center justify-center active:scale-95 transition-transform hover:brightness-110 group shrink-0"><RotateCw className={isSpinning ? "animate-spin text-[#451a03]" : "hidden"} size={24} /><Play className={!isSpinning ? "fill-[#451a03] text-[#451a03] ml-1" : "hidden"} size={28} /></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {user.role === 'admin' && (
+                        <div className={`fixed right-0 top-0 bottom-0 bg-[#121212] border-l border-[#fbbf24]/20 shadow-2xl transition-transform duration-300 flex flex-col z-[60] w-[300px] ${isAdminOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                            <div className="h-14 shrink-0 flex items-center justify-between px-4 border-b border-white/10 bg-[#1a1a1a]">
+                                <div className="flex items-center gap-2 text-[#fbbf24] font-bold text-sm font-noto"><Settings size={16} /> 管理員控制台</div>
+                                <button onClick={() => setIsAdminOpen(false)} className="text-gray-500 hover:text-white"><ChevronsRight size={20} /></button>
+                            </div>
+                            
+                            <div className="p-4 space-y-6 overflow-y-auto custom-scroll flex-grow font-noto">
+                                {/* RTP 模拟器 */}
+                                <button onClick={() => setShowSimModal(true)} className="w-full bg-indigo-900/50 border border-indigo-500 text-indigo-200 py-2 rounded font-bold flex items-center justify-center gap-2 hover:bg-indigo-900 transition-colors">
+                                    <Activity size={16} /> 開啟 RTP 模擬器
+                                </button>
+                                
+                                {/* 快捷指令区 */}
+                                <div className="space-y-3">
+                                    <h3 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2"><Zap size={12} className="text-yellow-500" /> 快速指令 (Quick)</h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button disabled={isSpinning} onClick={() => startSpin('SCATTER')} className="bg-rose-900/20 hover:bg-rose-900/40 border border-rose-700/50 text-rose-400 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors">FG (进免游)</button>
+                                        <button disabled={isSpinning} onClick={() => startSpin('BIG_WIN')} className="bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/50 text-emerald-400 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors">WIN (必赢)</button>
+                                    </div>
+                                </div>
+
+                                {/* [新增] 连消测试面板 */}
+                                <div className="bg-white/5 p-3 rounded border border-white/10">
+                                    <h3 className="text-xs font-bold text-[#fbbf24] uppercase mb-3 border-b border-white/10 pb-2">🧪 连消测试 (Cascade Lab)</h3>
+                                    
+                                    {/* 1. 控制首局输赢 */}
+                                    <div className="flex items-center justify-between mb-4">
+                                        <span className="text-xs text-gray-400">首局结果 (First Spin)</span>
+                                        <div className="flex bg-black rounded border border-white/10 p-0.5">
+                                            <button onClick={() => setCheatNextWin(true)} className={`px-3 py-1 rounded text-[10px] font-bold transition-colors ${cheatNextWin ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>WIN</button>
+                                            <button onClick={() => setCheatNextWin(false)} className={`px-3 py-1 rounded text-[10px] font-bold transition-colors ${!cheatNextWin ? 'bg-red-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>LOSE</button>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. 控制后续连消次数 */}
+                                    <div className="flex items-center justify-between mb-4">
+                                        <span className="text-xs text-gray-400">后续连消 (Cascades)</span>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setCheatCascades(Math.max(0, cheatCascades-1))} className="w-6 h-6 bg-white/10 rounded flex items-center justify-center hover:bg-white/20 text-white">-</button>
+                                            <span className="w-8 text-center font-mono font-bold text-[#fbbf24]">{cheatCascades}</span>
+                                            <button onClick={() => setCheatCascades(Math.min(20, cheatCascades+1))} className="w-6 h-6 bg-white/10 rounded flex items-center justify-center hover:bg-white/20 text-white">+</button>
+                                        </div>
+                                    </div>
+
+                                    {/* 3. 执行按钮 */}
+                                    <button 
+                                        disabled={isSpinning} 
+                                        onClick={() => startSpin(null, false, 0, { win: cheatNextWin, cascades: cheatCascades })} 
+                                        className="w-full bg-gradient-to-r from-[#b45309] to-[#fbbf24] text-black font-bold py-2 rounded hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        执行测试 (Run Test)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <style>{`@keyframes laserShoot { 0% { stroke-dasharray: 0, 1000; stroke-dashoffset: 0; opacity: 0.8; } 50% { opacity: 1; stroke-width: 8; } 100% { stroke-dasharray: 1000, 0; stroke-dashoffset: 0; opacity: 0; stroke-width: 2; } } .animate-laser-shot { animation: laserShoot 0.6s ease-out forwards; }`}</style>
+
+                    {/* Background Music */}
+                    <audio ref={bgmRef} loop src="./sound/bgm.MP3" />
+
+                </div>
+            );
+        }
+        // --- [补回] 悬浮日志窗口 ---
+        function FloatingLogger({ logs, visible, onToggle }) {
+            if (!visible) return (
+                <button onClick={onToggle} className="fixed top-2 left-2 z-[100] bg-black/50 text-white p-2 rounded-full border border-white/20 hover:bg-black/80">
+                    <Terminal size={16} />
+                </button>
+            );
+
+            return (
+                <div className="fixed top-2 left-2 z-[100] w-64 max-h-[300px] flex flex-col font-noto animate-in slide-in-from-left-10">
+                    <div className="bg-black/80 backdrop-blur-md border border-white/20 rounded-t-lg p-2 flex justify-between items-center cursor-pointer" onClick={onToggle}>
+                        <span className="text-xs font-bold text-[#fbbf24] flex items-center gap-2"><Terminal size={12} /> 系统日志</span>
+                        <Minus size={12} className="text-gray-400" />
+                    </div>
+                    <div className="bg-black/60 border-x border-b border-white/10 rounded-b-lg p-2 overflow-y-auto custom-scroll h-full text-[10px] font-mono">
+                        {logs.length === 0 && <div className="text-gray-500 italic">等待数据...</div>}
+                        {logs.map((l, i) => (
+                            <div key={i} className={`mb-1 border-b border-white/5 pb-1 last:border-0 ${l.type === 'error' ? 'text-red-400' : l.type === 'success' ? 'text-emerald-400' : l.type === 'gold' ? 'text-yellow-400' : l.type === 'warning' ? 'text-orange-400' : 'text-gray-300'}`}>
+                                <span className="opacity-50 mr-1">[{l.time}]</span>
+                                {l.msg}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        // --- [升级] 选桌大厅组件 (Filter & FG Detail) ---
+        // --- [修复] 选桌大厅组件 (Correct Version) ---
+        function TableLobby({ tableCount, onSelectTable, user, onLogout }) {
+            const [tables, setTables] = useState([]);
+            const [selectedId, setSelectedId] = useState(null);
+            const [filter, setFilter] = useState('all'); // 玩家端只用 filter，不用 activeTab
+
+            useEffect(() => {
+                const unsub = onSnapshot(collection(db, 'apps', APP_ID, 'tables'), (snapshot) => {
+                    const list = Array.from({length: tableCount}, (_, i) => ({ id: i+1, status: 'idle', currentUser: null, totalBet:0, totalWin:0, todayBet:0, todayWin:0, fgCount:0, totalSpins:0, fgHistory:[] }));
+                    snapshot.forEach(doc => {
+                        const id = parseInt(doc.id.replace('table_', ''));
+                        if (id > 0 && id <= tableCount) list[id-1] = { ...list[id-1], ...doc.data() };
+                    });
+                    setTables(list);
+                });
+                return () => unsub();
+            }, [tableCount]);
+
+            // 辅助：判断桌子是否真的繁忙 (含超时检测)
+            const isTableBusy = (t) => {
+                const isStale = t.lastActive && (new Date().getTime() - t.lastActive > 15000);
+                return (t.status === 'occupied' || t.status === 'spinning') && !isStale;
+            };
+
+            // 过滤逻辑
+            const displayedTables = tables.filter(t => filter === 'all' || !isTableBusy(t));
+
+            // 底部状态栏逻辑
+            const activeTable = selectedId ? tables.find(t => t.id === selectedId) : null;
+            const isRealOccupied = activeTable && isTableBusy(activeTable);
+            const calcRTP = (win, bet) => bet > 0 ? ((win/bet)*100).toFixed(2) : '0.00';
+
+            // FG 统计计算
+            const avgFG = (activeTable && activeTable.fgCount > 0) ? Math.round((activeTable.totalSpins || 0) / activeTable.fgCount) : '-';
+            const fgHist = activeTable ? (activeTable.fgHistory || []) : [];
+            const last1 = fgHist.length > 0 ? fgHist[fgHist.length - 1] : '-';
+            const last2 = fgHist.length > 1 ? fgHist[fgHist.length - 2] : '-';
+
+            return (
+                <div className="min-h-screen bg-[#0f0500] text-white font-noto flex flex-col animate-in fade-in relative">
+                    {/* Header */}
+                    <div className="h-16 bg-[#1c1917] border-b border-[#fbbf24]/30 flex items-center justify-between px-6 shrink-0 z-10 shadow-xl">
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-2"><span className="text-2xl font-cinzel font-bold text-[#fbbf24]">SETH II</span><span className="bg-[#fbbf24]/20 text-[#fbbf24] px-2 py-0.5 rounded text-xs font-bold">LOBBY</span></div>
+                            
+                            {/* 桌台筛选按钮 */}
+                            <div className="flex bg-black/50 p-1 rounded-lg border border-white/10">
+                                <button onClick={() => setFilter('all')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${filter === 'all' ? 'bg-[#fbbf24] text-black' : 'text-gray-400 hover:text-white'}`}>全部桌台</button>
+                                <button onClick={() => setFilter('empty')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${filter === 'empty' ? 'bg-[#fbbf24] text-black' : 'text-gray-400 hover:text-white'}`}>空桌</button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4"><div className="flex flex-col items-end mr-4"><span className="text-sm font-bold text-gray-300">{user.name}</span><span className="text-xs font-mono text-[#fbbf24]">${Math.floor(user.balance).toLocaleString()}</span></div><button onClick={onLogout} className="bg-white/5 hover:bg-white/10 p-2 rounded-full transition-colors text-gray-400 hover:text-white"><LogOut size={20} /></button></div>
+                    </div>
+
+                    {/* Table Grid */}
+                    <div className="flex-grow p-6 pb-48 overflow-y-auto custom-scroll">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 max-w-7xl mx-auto">
+                            {displayedTables.map(t => {
+                                const occupied = isTableBusy(t);
+                                const isSelf = t.currentUserId === user.id;
+                                const isSelected = selectedId === t.id;
+                                
+                                return (
+                                    <button 
+                                        key={t.id}
+                                        onClick={() => setSelectedId(t.id)}
+                                        className={`group relative aspect-[4/3] rounded-xl border-2 transition-all duration-300 flex flex-col items-center justify-center gap-3 overflow-hidden shadow-2xl
+                                            ${isSelected ? 'border-[#fbbf24] ring-2 ring-[#fbbf24]/50 scale-105 z-10 bg-[#2d1b0e]' : 
+                                              occupied ? (isSelf ? 'bg-emerald-900/20 border-emerald-500/50' : 'bg-red-900/10 border-red-900/30 opacity-60') : 
+                                              'bg-[#1c1917] border-[#fbbf24]/30 hover:border-[#fbbf24]'}
+                                        `}
+                                    >
+                                        <div className={`absolute top-0 left-0 px-3 py-1 rounded-br-lg font-black font-cinzel text-lg ${occupied && !isSelf ? 'bg-red-900 text-red-200' : 'bg-[#fbbf24] text-black'}`}>#{t.id}</div>
+                                        <div className={`p-4 rounded-full border-2 ${occupied ? 'bg-black/50 border-white/10' : 'bg-gradient-to-br from-[#fbbf24] to-[#b45309] border-white/20'}`}>{occupied ? <Lock size={32} className="text-gray-400" /> : <Play size={32} className="text-black ml-1" />}</div>
+                                        {occupied && <div className="absolute bottom-2 text-[10px] text-gray-400 bg-black/80 px-2 rounded">{isSelf ? 'YOU ARE HERE' : t.currentUser}</div>}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* 底部详情状态栏 */}
+                    {/* [适配] 底部详情状态栏 (手机端紧凑版 / 桌面端完整版) */}
+                    <div className={`fixed bottom-0 left-0 w-full bg-[#1c1917] border-t border-[#fbbf24] p-3 md:p-4 transition-transform duration-300 z-50 shadow-[0_-5px_30px_rgba(0,0,0,0.9)] ${selectedId ? 'translate-y-0' : 'translate-y-full'}`}>
+                        {activeTable && (
+                            <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-3 lg:gap-8">
+                                
+                                {/* 1. 手机端顶部：桌号 + 按钮 (左右分布) */}
+                                <div className="flex items-center justify-between w-full lg:w-auto lg:hidden">
+                                    <div className="text-3xl font-cinzel font-bold text-[#fbbf24]">#{activeTable.id}</div>
+                                    <button 
+                                        onClick={() => { if (isRealOccupied && activeTable.currentUserId !== user.id) alert("该桌已被占用"); else onSelectTable(activeTable.id); }}
+                                        disabled={isRealOccupied && activeTable.currentUserId !== user.id}
+                                        className={`px-6 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${ (isRealOccupied && activeTable.currentUserId !== user.id) ? 'bg-gray-800 text-gray-500' : 'bg-[#fbbf24] text-black' }`}
+                                    >
+                                        {(isRealOccupied && activeTable.currentUserId !== user.id) ? <Lock size={16}/> : <Play size={16}/>}
+                                        {(isRealOccupied && activeTable.currentUserId === user.id) ? '返回' : '进入'}
+                                    </button>
+                                </div>
+
+                                {/* 2. 数据展示区 (手机端 Grid / 桌面端 Flex) */}
+                                <div className="w-full lg:flex-grow flex flex-col lg:flex-row items-center gap-3 lg:gap-8">
+                                    {/* RTP 数据 */}
+                                    <div className="grid grid-cols-4 lg:flex gap-2 lg:gap-6 w-full lg:w-auto text-center lg:text-left bg-white/5 lg:bg-transparent p-2 lg:p-0 rounded-lg">
+                                        <div className="col-span-2 lg:col-span-1 flex lg:block items-center justify-between lg:justify-center px-2 lg:px-0">
+                                            <div className="text-[10px] text-gray-500 font-bold uppercase lg:mb-1">今日 RTP</div>
+                                            <div className={`text-lg lg:text-xl font-mono font-bold ${Number(calcRTP(activeTable.todayWin, activeTable.todayBet))>100?'text-red-500':'text-emerald-500'}`}>{calcRTP(activeTable.todayWin, activeTable.todayBet)}%</div>
+                                        </div>
+                                        <div className="col-span-2 lg:col-span-1 flex lg:block items-center justify-between lg:justify-center px-2 lg:px-0 border-l border-white/10 lg:border-0 pl-2 lg:pl-0">
+                                            <div className="text-[10px] text-gray-500 font-bold uppercase lg:mb-1">30日 RTP</div>
+                                            <div className="text-lg lg:text-xl font-mono font-bold text-blue-400">{calcRTP(activeTable.totalWin, activeTable.totalBet)}%</div>
+                                        </div>
+                                        
+                                        {/* 手机端额外显示的 FG 简略数据 */}
+                                        <div className="col-span-2 lg:hidden flex items-center justify-between px-2 border-t border-white/10 pt-2 mt-1">
+                                            <div className="text-[10px] text-purple-400 font-bold uppercase">平均 FG</div>
+                                            <div className="text-sm font-mono text-white">1 / <span className="text-[#fbbf24]">{avgFG}</span></div>
+                                        </div>
+                                        <div className="col-span-2 lg:hidden flex items-center justify-between px-2 border-t border-white/10 pt-2 mt-1 border-l pl-2">
+                                            <div className="text-[10px] text-purple-400 font-bold uppercase">FG 次数</div>
+                                            <div className="text-sm font-mono text-white">{activeTable.fgCount || 0}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* 桌面端详细 FG 数据栏 (手机端隐藏) */}
+                                    <div className="hidden lg:flex flex-grow bg-white/5 rounded-lg border border-white/10 p-2 items-center justify-around">
+                                        <div className="text-center"><div className="text-[9px] text-purple-400 uppercase font-bold">平均 FG 機率</div><div className="text-lg font-mono font-bold text-white">1 / <span className="text-[#fbbf24]">{avgFG}</span></div></div>
+                                        <div className="h-8 w-px bg-white/10"></div>
+                                        <div className="text-center"><div className="text-[9px] text-gray-500 uppercase font-bold">上1次 / 上2次</div><div className="text-lg font-mono text-gray-300">{last1} / {last2}</div></div>
+                                        <div className="h-8 w-px bg-white/10"></div>
+                                        <div className="text-center"><div className="text-[9px] text-gray-500 uppercase font-bold">FG 進入次數</div><div className="text-lg font-mono font-bold text-white">{activeTable.fgCount || 0}</div></div>
+                                    </div>
+                                </div>
+                                
+                                {/* 3. 桌面端右侧按钮 (手机端隐藏) */}
+                                <div className="hidden lg:flex items-center gap-6 shrink-0">
+                                    <div className="text-5xl font-cinzel font-bold text-[#fbbf24] drop-shadow-md">#{activeTable.id}</div>
+                                    <button 
+                                        onClick={() => { if (isRealOccupied && activeTable.currentUserId !== user.id) alert("该桌已被占用"); else onSelectTable(activeTable.id); }}
+                                        disabled={isRealOccupied && activeTable.currentUserId !== user.id}
+                                        className={`shrink-0 px-8 py-4 rounded-lg font-bold text-lg flex items-center gap-2 transition-all ${ (isRealOccupied && activeTable.currentUserId !== user.id) ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-[#b45309] to-[#fbbf24] text-black hover:scale-105' }`}
+                                    >
+                                        {(isRealOccupied && activeTable.currentUserId !== user.id) ? <Lock size={20}/> : <Play size={20}/>}
+                                        {(isRealOccupied && activeTable.currentUserId === user.id) ? '返回游戏' : '进入游戏'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // ------------------------------------------------------------
+        // Admin Dashboard (Updated with Detailed Symbol Config)
+        // ------------------------------------------------------------
+            function AdminDashboard({ users, onCreateUser, onDeleteUser, onUpdateUserBalance, config, onUpdateConfig, onLogout, onResetData, onSelectTable }) {
+            const [activeTab, setActiveTab] = useState('monitor');
+            const [newUser, setNewUser] = useState({ id: '', name: '', password: '', balance: 10000 });
+            const [localWeights, setLocalWeights] = useState(config.symbolWeights || DEFAULT_CONFIG.symbolWeights);
+            // [修復] 這裡補上缺失的 localConfig 狀態宣告
+            const [localConfig, setLocalConfig] = useState(config);
+            const [tables, setTables] = useState([]);
+
+            useEffect(() => { if (config.symbolWeights) setLocalWeights(config.symbolWeights); }, [config]);
+            // [修復] 這裡補上同步邏輯，當父層 config 更新時同步到 localConfig
+            useEffect(() => { setLocalConfig(config); }, [config]);
+            
+            // [Monitor] 實時監聽所有桌台
+            useEffect(() => {
+                if (activeTab === 'monitor') {
+                    const unsub = onSnapshot(collection(db, 'apps', APP_ID, 'tables'), (snap) => {
+                        const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+                        setTables(list.sort((a,b) => parseInt(a.id.split('_')[1]) - parseInt(b.id.split('_')[1])));
+                    });
+                    return () => unsub();
+                }
+            }, [activeTab]);
+
+            // 處理單一符號權重變更
+            const handleWeightChange = (id, val) => {
+                const newWeights = { ...localWeights, [id]: Number(val) };
+                setLocalWeights(newWeights);
+                // 即時更新到父層 (會寫入 Firebase)
+                onUpdateConfig({ ...config, symbolWeights: newWeights });
+            };
+
+const handleCreate = () => { 
+                if (!newUser.id || !newUser.name || !newUser.password) { alert("請填寫完整資料"); return; } 
+                onCreateUser(newUser); setNewUser({ id: '', name: '', password: '', balance: 10000 }); 
+            };
+
+            // [新增] 內部權重變更處理
+            const handleInternalWeightChange = (tier, index, newWeight) => {
+                const newInternal = { ...localConfig.multiplierInternalWeights };
+                // Deep copy 防止修改原始引用
+                newInternal[tier] = [...newInternal[tier]];
+                newInternal[tier][index] = { ...newInternal[tier][index], weight: Number(newWeight) };
+                
+                const newCfg = { ...localConfig, multiplierInternalWeights: newInternal };
+                setLocalConfig(newCfg); 
+                onUpdateConfig(newCfg); 
+            };
+            // [Helper] 符號顏色映射 (用於圖形監控)
+            const getSymbolColor = (id) => {
+                if (id === 99) return 'bg-yellow-500 border-yellow-300 text-black font-black shadow-[0_0_5px_gold]';
+                if (id === 88) return 'bg-purple-600 border-purple-400 text-white font-black shadow-[0_0_5px_purple]';
+                if (id >= 8) return 'bg-red-700 border-red-500 text-white';
+                if (id >= 6) return 'bg-blue-700 border-blue-500 text-white';
+                return 'bg-[#2a2a2a] border-white/10 text-gray-500';
+            };
+
+// [新增] 控制側邊欄開關的狀態
+            const [isSidebarOpen, setSidebarOpen] = useState(false);
+
+            return (
+                <div className="h-screen bg-[#0f0500] text-white font-noto flex flex-col lg:flex-row overflow-hidden relative">
+                    {/* [修復] 移動端懸浮開關按鈕 (Fixed Toggle Button) */}
+                    <button 
+                        onClick={() => setSidebarOpen(!isSidebarOpen)} 
+                        className="lg:hidden fixed top-4 right-4 z-[60] bg-[#fbbf24] text-black p-2 rounded-full shadow-lg border border-white/20 active:scale-95 transition-transform"
+                    >
+                        {isSidebarOpen ? <X size={24} strokeWidth={3}/> : <Settings size={24} strokeWidth={3}/>}
+                    </button>
+
+                    {/* Sidebar (Responsive) */}
+                    <div className={`
+                        fixed inset-y-0 left-0 w-64 bg-[#1c1917] border-r border-white/10 flex flex-col z-40 shadow-2xl transition-transform duration-300
+                        lg:static lg:transform-none
+                        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                    `}>
+                        <div className="h-16 hidden lg:flex items-center gap-2 px-6 border-b border-white/10 text-[#fbbf24] font-cinzel font-bold text-xl"><Settings className="text-[#fbbf24]" /> SETH ADMIN</div>
+                        <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scroll">
+                            <button onClick={() => { setActiveTab('monitor'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'monitor' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Activity size={18} /> 即時監控 (Live)</button>
+                            <button onClick={() => { setActiveTab('config'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'config' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><RotateCw size={18} /> 機率與桌台</button>
+                            <button onClick={() => { setActiveTab('users'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'users' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Users size={18} /> 玩家管理</button>
+                            <button onClick={() => { setActiveTab('data'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition-colors ${activeTab === 'data' ? 'bg-[#fbbf24] text-black font-bold shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'text-gray-400 hover:bg-white/5'}`}><Database size={18} /> 數據維護</button>
+                        </nav>
+                        <div className="p-4 border-t border-white/10"><button onClick={onLogout} className="w-full flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors"><LogOut size={16} /> 登出系統</button></div>
+                    </div>
+
+                    {/* Main Content (Scrollable) */}
+                    <div className="flex-grow overflow-y-auto custom-scroll p-8 bg-[#0a0a0a] relative">
+                        
+                        {/* MONITOR TAB (Graphical) */}
+                        {/* MONITOR TAB (Graphical) */}
+                        {activeTab === 'monitor' && (
+                            <>
+                                {/* [新增] 全局数据统计栏 (Global Stats Bar) */}
+                                {(() => {
+                                    // 实时计算全场总数据
+                                    const gStats = tables.reduce((acc, t) => ({
+                                        todayBet: acc.todayBet + (t.todayBet || 0),
+                                        todayWin: acc.todayWin + (t.todayWin || 0),
+                                        totalBet: acc.totalBet + (t.totalBet || 0),
+                                        totalWin: acc.totalWin + (t.totalWin || 0),
+                                        active: acc.active + (t.status === 'occupied' || t.status === 'spinning' ? 1 : 0)
+                                    }), { todayBet: 0, todayWin: 0, totalBet: 0, totalWin: 0, active: 0 });
+
+                                    const allTodayRTP = gStats.todayBet > 0 ? ((gStats.todayWin / gStats.todayBet) * 100).toFixed(2) : "0.00";
+                                    const allMonthRTP = gStats.totalBet > 0 ? ((gStats.totalWin / gStats.totalBet) * 100).toFixed(2) : "0.00";
+
+                                    return (
+                                        <div className="bg-[#1c1917] border-l-4 border-[#fbbf24] p-4 rounded-r-lg mb-6 shadow-lg flex flex-wrap items-center justify-between gap-6 animate-in slide-in-from-top-2">
+                                            <div className="flex items-center gap-4">
+                                                <div className="bg-black/40 p-2 rounded border border-white/5 text-center min-w-[120px]">
+                                                    <div className="text-[10px] text-gray-500 uppercase font-bold">全場今日 RTP</div>
+                                                    <div className={`text-2xl font-mono font-black ${Number(allTodayRTP)>100 ? 'text-red-500' : 'text-emerald-400'}`}>{allTodayRTP}%</div>
+                                                </div>
+                                                <div className="bg-black/40 p-2 rounded border border-white/5 text-center min-w-[120px]">
+                                                    <div className="text-[10px] text-gray-500 uppercase font-bold">全場30日 RTP</div>
+                                                    <div className={`text-2xl font-mono font-black ${Number(allMonthRTP)>100 ? 'text-red-500' : 'text-blue-400'}`}>{allMonthRTP}%</div>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-6 text-xs font-mono text-gray-400 border-l border-white/10 pl-6">
+                                                <div>今日總投: <span className="text-white font-bold">${gStats.todayBet.toLocaleString()}</span></div>
+                                                <div>總盈利(庄): <span className={`${(gStats.todayBet-gStats.todayWin)<0 ? 'text-red-400' : 'text-green-400'} font-bold`}>${(gStats.todayBet - gStats.todayWin).toLocaleString()}</span></div>
+                                                <div>活躍桌台: <span className="text-[#fbbf24] font-bold">{gStats.active} / {config.tableCount || 12}</span></div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 pb-20">
+
+                                {Array.from({length: config.tableCount || 12}).map((_, i) => {
+                                    const tableNum = i + 1;
+                                    const t = tables.find(tb => tb.id === `table_${tableNum}`) || {};
+                                    
+                                    // [超时检查] 超过 15秒 无心跳视为 IDLE
+                                    const isStale = t.lastActive && (new Date().getTime() - t.lastActive > 15000);
+                                    const isBusy = (t.status === 'occupied' || t.status === 'spinning') && !isStale;
+                                    
+                                    const gridData = t.monitorGrid || Array(5).fill(Array(6).fill(0));
+                                    const rtp = t.totalBet > 0 ? ((t.totalWin/t.totalBet)*100).toFixed(1) : '0.0';
+                                    
+                                    return (
+                                        <div key={tableNum} className={`rounded-xl border overflow-hidden transition-all hover:shadow-[0_0_20px_rgba(251,191,36,0.2)] group ${isBusy ? 'bg-[#1a1510] border-[#fbbf24]/40' : 'bg-[#1c1917] border-white/10 opacity-80'}`}>
+                                            {/* Header */}
+                                            <div className="px-4 py-3 bg-black/40 flex justify-between items-center border-b border-white/5">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-cinzel font-bold text-[#fbbf24] text-lg">TABLE {tableNum}</span>
+                                                    {t.status === 'spinning' && <Loader2 size={14} className="text-[#fbbf24] animate-spin"/>}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`w-2 h-2 rounded-full ${isBusy ? 'bg-emerald-500 shadow-[0_0_5px_#10b981] animate-pulse' : 'bg-gray-600'}`}></span>
+                                                    <span className={`text-[10px] font-bold tracking-wider ${isBusy ? 'text-emerald-400' : 'text-gray-500'}`}>{isBusy ? (t.status === 'spinning' ? 'SPINNING' : 'ACTIVE') : 'IDLE'}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Graphical Grid (5x6) - Visual Upgrade */}
+                                            <div className="p-4 flex justify-center bg-black/20 relative">
+                                                <div className="grid grid-cols-6 gap-1 w-full max-w-[220px] aspect-[6/5]">
+                                                    {gridData.flat().map((item, idx) => {
+                                                        // 兼容旧数据(数字)和新数据(对象)
+                                                        const id = typeof item === 'object' ? item.i : item;
+                                                        const val = typeof item === 'object' ? item.v : 0;
+                                                        
+                                                        const sym = SYMBOLS_DEF.find(s => s.id === id);
+                                                        if (!sym) return <div key={idx} className="bg-white/5 rounded-[2px]"></div>;
+
+                                                        return (
+                                                            <div key={idx} className={`relative w-full h-full rounded-[2px] flex items-center justify-center overflow-hidden ${id===99?'bg-yellow-900/30':''}`}>
+                                                                {id === 88 ? (
+                                                                        <div className="w-full h-full flex items-center justify-center bg-purple-900/50 border border-purple-500/50 rounded-full">
+                                                                            <span className="text-xs md:text-[10px] font-black text-[#fbbf24] drop-shadow-md">{val}x</span>
+                                                                        </div>
+                                                                ) : (
+                                                                    // 普通符号显示图片
+                                                                    sym.icon.includes('.') 
+                                                                    ? <img src={sym.icon} className="w-[90%] h-[90%] object-contain" />
+                                                                    : <span className="text-[10px]">{sym.icon}</span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                                
+                                                {/* Overlay Action */}
+                                                <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
+                                                    <button onClick={() => onSelectTable && onSelectTable(tableNum)} className="bg-[#fbbf24] text-black px-6 py-2 rounded-full font-bold hover:scale-105 transition-transform flex items-center gap-2 shadow-[0_0_20px_rgba(251,191,36,0.5)]">
+                                                        <Play size={16} fill="black"/> 進入測試
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Stats (Enhanced) */}
+                                            <div className="p-3 bg-[#121212] space-y-2 text-xs border-t border-white/5">
+                                                <div className="flex justify-between border-b border-white/5 pb-1 mb-1">
+                                                    <span className="text-gray-500">Player: <span className="text-white font-bold">{t.currentUser || '-'}</span></span>
+                                                    <span className={`${Number(rtp)>100?'text-red-400':'text-blue-400'} font-mono font-bold`}>RTP {rtp}%</span>
+                                                </div>
+                                                
+                                                {/* FG Stats Row */}
+                                                <div className="flex justify-between items-center bg-white/5 p-1.5 rounded">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[8px] text-gray-500 uppercase">平均 FG</span>
+                                                        <span className="text-[#fbbf24] font-mono font-bold">1 / {t.fgCount > 0 ? Math.round((t.totalSpins||0)/t.fgCount) : '-'}</span>
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[8px] text-gray-500 uppercase">上1次 / 上2次</span>
+                                                        <span className="text-gray-300 font-mono">
+                                                            {t.fgHistory && t.fgHistory.length > 0 ? t.fgHistory[t.fgHistory.length-1] : '-'} / {t.fgHistory && t.fgHistory.length > 1 ? t.fgHistory[t.fgHistory.length-2] : '-'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex justify-between text-[10px] text-gray-500">
+                                                    <span>Total Win: <span className="text-[#fbbf24]">${(t.totalWin||0).toLocaleString()}</span></span>
+                                                    <span>FG Hits: <span className="text-purple-400">{t.fgCount || 0}</span></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                             </div>
+                            </>
+                        )}
+
+                        {/* CONFIG TAB */}
+                        {activeTab === 'config' && (
+                            <div className="max-w-5xl mx-auto">
+                                
+                                {/* [新增] 配置導入與導出控制區 */}
+                                <div className="bg-[#1c1917] p-6 rounded-lg border border-[#fbbf24]/30 mb-8 animate-in fade-in slide-in-from-top-4">
+                                    <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-4">
+                                        <h2 className="text-xl font-bold flex items-center gap-2 text-[#fbbf24]">
+                                            <Database size={20}/> 配置管理 (Config Manager)
+                                        </h2>
+                                        <div className="text-xs text-gray-400">
+                                            支援格式: .json 文字檔
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex flex-col md:flex-row gap-4">
+                                        {/* 導出按鈕 */}
+                                        <button 
+                                            onClick={() => {
+                                                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2));
+                                                const downloadAnchorNode = document.createElement('a');
+                                                downloadAnchorNode.setAttribute("href", dataStr);
+                                                downloadAnchorNode.setAttribute("download", "seth_casino_config.json");
+                                                document.body.appendChild(downloadAnchorNode);
+                                                downloadAnchorNode.click();
+                                                downloadAnchorNode.remove();
+                                            }}
+                                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded font-bold flex items-center justify-center gap-2 transition-colors border border-blue-500/50 shadow-lg"
+                                        >
+                                            <Download size={18} /> 儲存配置 (Export JSON)
+                                        </button>
+
+                                        {/* 導入按鈕 (隱藏 input) */}
+                                        <label className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border border-emerald-500/50 shadow-lg relative overflow-hidden group">
+                                            <Upload size={18} /> 導入配置 (Import JSON)
+                                            <input 
+                                                type="file" 
+                                                accept=".json" 
+                                                className="hidden" 
+                                                onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (!file) return;
+                                                    
+                                                    const reader = new FileReader();
+                                                    reader.onload = (event) => {
+                                                        try {
+                                                            const importedData = JSON.parse(event.target.result);
+                                                            
+                                                            // 簡單驗證：檢查是否包含關鍵欄位
+                                                            if (!importedData.symbolWeights || !importedData.multiplierTierWeights) {
+                                                                alert("導入失敗：檔案格式錯誤，缺少關鍵設定 (symbolWeights / TierWeights)");
+                                                                return;
+                                                            }
+
+                                                            // 確認對話框
+                                                            if(confirm("確定要覆蓋當前的遊戲設定嗎？\n此操作將立即生效並同步至資料庫。")) {
+                                                                onUpdateConfig(importedData);
+                                                                alert("✅ 配置導入成功！");
+                                                            }
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            alert("導入失敗：JSON 解析錯誤，請檢查檔案格式。");
+                                                        }
+                                                        // 清空 input 以便重複選擇同個檔案
+                                                        e.target.value = '';
+                                                    };
+                                                    reader.readAsText(file);
+                                                }} 
+                                            />
+                                            {/* 視覺效果 */}
+                                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="bg-[#1c1917] p-6 rounded-lg border border-white/10 mb-8"><h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-400"><Settings size={20}/> 基础设定</h2><div className="grid grid-cols-2 gap-8"><div><label className="text-sm text-gray-300 mb-2 block">开放桌台数量</label><input type="number" min="1" max="50" value={config.tableCount || 12} onChange={e => onUpdateConfig({ ...config, tableCount: Number(e.target.value) })} className="w-full bg-black border border-white/20 rounded px-3 py-2 text-white font-mono font-bold outline-none focus:border-blue-500" /></div></div></div>
+
+                                {/* --- 第一部分：符號出現機率 (Symbol Probability) --- */}
+                                <div className="mb-8">
+                                    {(() => {
+                                        const currentSymbolTotal = SYMBOLS_DEF
+                                            .filter(s => s.id !== 88) // 排除 ID 88
+                                            .reduce((acc, s) => {
+                                                const val = localWeights[s.id] !== undefined ? Number(localWeights[s.id]) : 0;
+                                                return acc + val;
+                                            }, 0);
+
+                                        return (
+                                            <>
+                                                <div className="flex justify-between items-end mb-4 border-b border-white/10 pb-2">
+                                                    <h2 className="text-xl font-bold flex items-center gap-2 text-[#fbbf24]">
+                                                        <BarChart2 className="text-[#fbbf24]" /> 符號掉落機率 (Symbol %)
+                                                    </h2>
+                                                    {/* 計算目前總和 */}
+                                                    <div className="text-sm font-mono">
+                                                        總計: <span className={`${currentSymbolTotal.toFixed(1) == 100 ? 'text-green-400' : 'text-red-400'} font-bold`}>
+                                                            {currentSymbolTotal.toFixed(1)}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-gray-400 text-xs mb-4">
+                                                    * 設定各符號在盤面出現的百分比機率。建議總和為 100%。(ID 88 已由砸球機制接管，故不在此列)
+                                                </p>
+
+                                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                                    {SYMBOLS_DEF.map(s => {
+                                                        if (s.id === 88) return null; // 隱藏 ID 88
+                                                        return (
+                                                            <div key={s.id} className="bg-[#1c1917] p-3 rounded-lg border border-white/10 flex items-center gap-3 hover:border-[#fbbf24]/50 transition-colors relative group">
+                                                                <div className="w-12 h-12 flex items-center justify-center shrink-0">
+                                                                    {s.icon.includes('.') ? (
+                                                                        <img src={s.icon} alt={s.name} className="w-full h-full object-contain drop-shadow-md transition-transform group-hover:scale-110" />
+                                                                    ) : (
+                                                                        <span className={`text-4xl ${s.color} drop-shadow-md transition-transform group-hover:scale-110`}>{s.icon}</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex-grow">
+                                                                    <div className="flex justify-between items-end mb-1">
+                                                                        <span className="text-xs text-gray-400 font-bold uppercase">{s.name}</span>
+                                                                        <span className="text-[10px] text-gray-600 font-mono">ID:{s.id}</span>
+                                                                    </div>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type="number"
+                                                                            min="0"
+                                                                            max="100"
+                                                                            step="0.1"
+                                                                            value={localWeights[s.id] !== undefined ? localWeights[s.id] : 0}
+                                                                            onChange={(e) => handleWeightChange(s.id, e.target.value)}
+                                                                            className="w-full bg-black border border-white/20 rounded px-2 py-1 text-[#fbbf24] font-mono font-bold text-sm focus:border-[#fbbf24] outline-none transition-all pr-6"
+                                                                        />
+                                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 text-xs">%</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                                {/* [新增] 4. 內部權重設定 */}
+                                <div className="bg-[#1c1917] p-6 rounded-lg border border-blue-900/30">
+                                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-400 border-b border-white/10 pb-2"><Settings /> 倍數球內部權重 (Internal Weights)</h2>
+                                    <p className="text-xs text-gray-500 mb-4">* 設定每個層級內，特定倍數出現的相對權重 (Weight)。數值越高越容易出現。</p>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {Object.entries(localConfig.multiplierInternalWeights || {}).map(([tier, items]) => (
+                                            <div key={tier} className="bg-black/30 p-3 rounded border border-white/5">
+                                                <div className="text-sm font-bold text-gray-300 mb-2 uppercase border-b border-white/5 pb-1 flex justify-between">
+                                                    <span>{tier}</span>
+                                                    <span className="text-[10px] text-gray-500">Value : Weight</span>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    {items.map((item, idx) => {
+    // [新增] 強制隱藏 1x 的輸入框
+    if (item.val === 1) return null;
+
+    return (
+        <div key={`${tier}-${item.val}`} className="flex items-center gap-2">
+            <div className="w-12 text-right font-mono font-bold text-[#fbbf24] text-xs">{item.val}x</div>
+            <div className="text-gray-600 text-xs">:</div>
+            <input 
+                type="number" 
+                value={item.weight} 
+                onChange={(e) => handleInternalWeightChange(tier, idx, e.target.value)}
+                className="flex-grow bg-black border border-white/10 rounded px-2 py-1 text-xs font-mono text-white focus:border-blue-500 outline-none"
+            />
+        </div>
+    );
+})}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* --- 第二部分：遊戲節奏控制 (RTP) --- */}
+                                <div className="mb-8 bg-[#1c1917] p-6 rounded-lg border border-rose-900/30">
+                                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-rose-400 border-b border-white/10 pb-2">
+                                        <Activity className="text-rose-400" /> 遊戲節奏控制 (RTP Control)
+                                    </h2>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        {/* 1. 空轉機率 */}
+                                        <div>
+                                            <label className="text-sm text-gray-300 mb-2 block">強制空轉機率 (Loss Rate)</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="number" step="0.01" min="0" max="1"
+                                                    value={config.emptySpinProbability !== undefined ? config.emptySpinProbability : 0.2}
+                                                    onChange={e => {
+                                                        let val = parseFloat(e.target.value);
+                                                        if (val < 0) val = 0; if (val > 1) val = 1;
+                                                        onUpdateConfig({ ...config, emptySpinProbability: val })
+                                                    }}
+                                                    className="flex-grow bg-black border border-white/20 rounded px-3 py-2 text-rose-400 font-mono font-bold outline-none focus:border-rose-500"
+                                                />
+                                                <span className="text-xs text-gray-500 w-12 text-right">{Math.round((config.emptySpinProbability || 0.2) * 100)}%</span>
+                                            </div>
+                                        </div>
+
+                                        {/* 2. 砸球機率 */}
+                                        <div>
+                                            <label className="text-sm text-gray-300 mb-2 block">倍數球觸發機率 (Smash Rate)</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="number" step="0.01" min="0" max="1"
+                                                    value={config.smashProbability !== undefined ? config.smashProbability : 0.3}
+                                                    onChange={e => {
+                                                        let val = parseFloat(e.target.value);
+                                                        if (val < 0) val = 0; if (val > 1) val = 1;
+                                                        onUpdateConfig({ ...config, smashProbability: val })
+                                                    }}
+                                                    className="flex-grow bg-black border border-white/20 rounded px-3 py-2 text-purple-400 font-mono font-bold outline-none focus:border-purple-500"
+                                                />
+                                                <span className="text-xs text-gray-500 w-12 text-right">{Math.round((config.smashProbability || 0.3) * 100)}%</span>
+                                            </div>
+                                        </div>
+
+                                        {/* 3. [新增] 連續消除機率 */}
+                                        <div>
+                                            <label className="text-sm text-gray-300 mb-2 block">連續消除機率 (Cascade Chance)</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="number" step="0.01" min="0" max="1"
+                                                    value={config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5}
+                                                    onChange={e => {
+                                                        let val = parseFloat(e.target.value);
+                                                        if (val < 0) val = 0; if (val > 1) val = 1;
+                                                        onUpdateConfig({ ...config, cascadeProbability: val })
+                                                    }}
+                                                    className="flex-grow bg-black border border-white/20 rounded px-3 py-2 text-emerald-400 font-mono font-bold outline-none focus:border-emerald-500"
+                                                />
+                                                <span className="text-xs text-gray-500 w-12 text-right">{Math.round((config.cascadeProbability || 0.5) * 100)}%</span>
+                                            </div>
+                                            <p className="text-[10px] text-gray-500 mt-1">* 必贏劇本下，觸發下一次消除的機率 (遞歸判定)。</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* --- 第三部分：倍數球層級機率 (7 Tier System) --- */}
+                                <div className="mb-8">
+                                    {(() => {
+                                        const tiers = [
+                                            { id: 'tier1', name: 'T1 (最低)', desc: '2-5 倍', color: 'text-gray-400' }, 
+                                            { id: 'tier2', name: 'T2 (低)', desc: '6-10 倍', color: 'text-green-400' },
+                                            { id: 'tier3', name: 'T3 (中)', desc: '15-30 倍', color: 'text-blue-400' },
+                                            { id: 'tier4', name: 'T4 (中高)', desc: '35-50 倍', color: 'text-purple-400' },
+                                            { id: 'tier5', name: 'T5 (高)', desc: '60-100 倍', color: 'text-pink-400' },
+                                            { id: 'tier6', name: 'T6 (傳說)', desc: '150-300 倍', color: 'text-red-400' },
+                                            { id: 'tier7', name: 'T7 (神話)', desc: '350-500 倍', color: 'text-yellow-400' },
+                                        ];
+                                        
+                                        const currentWeights = config.multiplierTierWeights || DEFAULT_CONFIG.multiplierTierWeights;
+                                        const currentTotal = Object.values(currentWeights).reduce((a, b) => a + Number(b), 0);
+
+                                        return (
+                                            <>
+                                                <div className="flex justify-between items-end mb-4 border-b border-white/10 pb-2">
+                                                    <h2 className="text-xl font-bold flex items-center gap-2 text-purple-400">
+                                                        <Zap className="text-purple-400" /> 倍數球層級分佈 (7 Tiers)
+                                                    </h2>
+                                                    <div className="text-sm font-mono">
+                                                        總計: <span className={`${Math.abs(currentTotal - 100) < 0.1 ? 'text-green-400' : 'text-red-400'} font-bold`}>
+                                                            {currentTotal.toFixed(1)}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    {tiers.map(t => (
+                                                        <div key={t.id} className="bg-[#1c1917] p-3 rounded-lg border border-white/10 flex items-center gap-2 md:gap-4">
+                                                            <div className="w-24 shrink-0">
+                                                                <div className={`font-bold text-sm ${t.color}`}>{t.name}</div>
+                                                                <div className="text-[10px] text-gray-500">{t.desc}</div>
+                                                            </div>
+                                                            <div className="flex-grow flex items-center gap-2">
+                                                                <input
+                                                                    type="range" min="0" max="100" step="0.5"
+                                                                    value={currentWeights[t.id] || 0}
+                                                                    onChange={(e) => {
+                                                                        const newW = { ...currentWeights, [t.id]: Number(e.target.value) };
+                                                                        onUpdateConfig({ ...config, multiplierTierWeights: newW });
+                                                                    }}
+                                                                    className={`flex-grow h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer`}
+                                                                />
+                                                                <div className="relative w-16 shrink-0">
+                                                                    <input
+                                                                        type="number" min="0" max="100" step="0.5"
+                                                                        value={currentWeights[t.id] || 0}
+                                                                        onChange={(e) => {
+                                                                            const newW = { ...currentWeights, [t.id]: Number(e.target.value) };
+                                                                            onUpdateConfig({ ...config, multiplierTierWeights: newW });
+                                                                        }}
+                                                                        className={`w-full bg-black border border-white/20 rounded px-1 py-1 font-mono font-bold text-right outline-none text-xs focus:border-white/50 ${t.color}`}
+                                                                    />
+                                                                    <span className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-600 text-[9px]">%</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+
+                                {/* --- 第四部分：砸球數量權重 (Smash Quantity %) --- */}
+                                <div>
+                                    {(() => {
+                                        const qtyWeights = config.smashQtyWeights || DEFAULT_CONFIG.smashQtyWeights;
+                                        return (
+                                            <>
+                                                <div className="flex justify-between items-end mb-4 border-b border-white/10 pb-2">
+                                                    <h2 className="text-xl font-bold flex items-center gap-2 text-rose-400">
+                                                        <Flame className="text-rose-400" /> 砸球數量機率 (Smash Count)
+                                                    </h2>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mb-4">* 設定每次觸發砸球時，掉落 1-6 顆球的相對權重 (數字越大機率越高)。</p>
+
+                                                <div className="grid grid-cols-3 gap-4">
+                                                    {Object.keys(qtyWeights).map(qty => (
+                                                        <div key={qty} className="bg-[#1c1917] p-3 rounded border border-rose-900/30">
+                                                            <div className="text-center font-bold text-white mb-1">{qty} 顆球</div>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="number" min="0" max="1000"
+                                                                    value={qtyWeights[qty]}
+                                                                    onChange={(e) => {
+                                                                        const newQ = { ...qtyWeights, [qty]: Number(e.target.value) };
+                                                                        onUpdateConfig({ ...config, smashQtyWeights: newQ });
+                                                                    }}
+                                                                    className="w-full bg-black border border-white/20 rounded px-2 py-1 text-rose-400 font-mono font-bold text-center outline-none focus:border-rose-500"
+                                                                />
+                                                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 text-[10px]">權重</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>  
+                            </div>
+                        )}
+
+                        {/* USERS TAB */}
+                        {activeTab === 'users' && (<div className="space-y-8 max-w-5xl mx-auto">
+                                <div className="glass-panel p-6 rounded-xl">
+                                    <h3 className="text-lg font-bold text-[#fbbf24] mb-4 flex items-center gap-2"><PlusCircle size={18} /> 創建新玩家</h3>
+                                    <div className="grid grid-cols-4 gap-4">
+                                        <input placeholder="帳號 (ID)" value={newUser.id} onChange={e => setNewUser({ ...newUser, id: e.target.value })} className="bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:border-[#fbbf24] outline-none" />
+                                        <input placeholder="暱稱" value={newUser.name} onChange={e => setNewUser({ ...newUser, name: e.target.value })} className="bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:border-[#fbbf24] outline-none" />
+                                        <input placeholder="密碼" type="password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className="bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:border-[#fbbf24] outline-none" />
+                                        <div className="flex gap-2">
+                                            <input type="number" placeholder="初始餘額" value={newUser.balance} onChange={e => setNewUser({ ...newUser, balance: Number(e.target.value) })} className="bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:border-[#fbbf24] outline-none w-full" />
+                                            <button onClick={handleCreate} className="bg-[#fbbf24] text-black font-bold px-4 rounded hover:bg-[#f59e0b] whitespace-nowrap">創建</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="glass-panel p-6 rounded-xl">
+                                    <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Users size={18} /> 玩家列表</h3>
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="text-xs text-gray-400 uppercase bg-black/30">
+                                            <tr>
+                                                <th className="px-4 py-3">帳號</th>
+                                                <th className="px-4 py-3">暱稱</th>
+                                                <th className="px-4 py-3">餘額 (點擊修改)</th>
+                                                <th className="px-4 py-3">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/10">
+                                            {users.filter(u => u.role !== 'admin').map(u => (
+                                                <tr key={u.id} className="hover:bg-white/5">
+                                                    <td className="px-4 py-3 font-mono">{u.id}</td>
+                                                    <td className="px-4 py-3">{u.name}</td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={u.balance}
+                                                            onChange={(e) => onUpdateUserBalance(u.id, Number(e.target.value))}
+                                                            className="bg-transparent border border-transparent hover:border-white/20 focus:border-[#fbbf24] rounded px-2 py-1 outline-none font-mono text-[#fbbf24] w-32"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <button onClick={() => onDeleteUser(u.id)} className="text-red-400 hover:text-red-300 flex items-center gap-1">
+                                                            <Trash2 size={14} /> 刪除
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* DATA TAB */}
+                        {activeTab === 'data' && (
+                            <div className="glass-panel p-6 rounded-xl max-w-lg mx-auto mt-10">
+                                <h3 className="text-lg font-bold text-red-400 mb-4 flex items-center gap-2"><Trash2 size={18} /> 危險區域</h3>
+                                <p className="text-gray-400 text-sm mb-6">
+                                    點擊下方按鈕將清除所有雲端數據，並重建預設帳號。此操作對所有用戶生效，請謹慎使用。
+                                </p>
+                                <button onClick={onResetData} className="bg-red-900/50 border border-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded w-full flex items-center justify-center gap-2 transition-colors">
+                                    <RefreshCw size={18} /> 重置所有數據 (Factory Reset)
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // ==========================================
+        // [Step 1] 遊戲組件: 賽特傳說 (Seth Casino Game)
+        // ==========================================
+        // 這是原本的核心遊戲邏輯，現在被封裝成一個獨立組件
+        // 它只負責「賽特」這款遊戲內部的選桌、遊玩、管理
+        // 加上 export default，並接收環境變數 db, APP_ID 等
+        export default function SethCasinoGame({ user, onBack, db, APP_ID, COL_CONFIG, COL_USERS }) {
+            // 狀態：遊戲內的配置與桌台
+            const [configData, setConfigData] = useState(DEFAULT_CONFIG);
+            const [currentTable, setCurrentTable] = useState(null);
+            
+            // 狀態：管理員需要的玩家列表 (僅 Admin 模式加載)
+            const [usersData, setUsersData] = useState([]); 
+
+            // [監聽] 遊戲配置 (Config)
+            useEffect(() => {
+                const configRef = doc(db, 'apps', APP_ID, COL_CONFIG, 'main');
+                const unsub = onSnapshot(configRef, (snap) => {
+                    if (snap.exists()) setConfigData({ ...DEFAULT_CONFIG, ...snap.data() });
+                    else { setDoc(configRef, DEFAULT_CONFIG); setConfigData(DEFAULT_CONFIG); }
+                });
+                return () => unsub();
+            }, []);
+
+            // [監聽] 玩家數據 (僅管理員需要，用於後台管理)
+            useEffect(() => {
+                if (user.role !== 'admin') return;
+                const usersRef = collection(db, 'apps', APP_ID, COL_USERS);
+                const unsub = onSnapshot(usersRef, (snap) => {
+                    const list = []; snap.forEach(d => list.push(d.data()));
+                    setUsersData(list);
+                });
+                return () => unsub();
+            }, [user.role]);
+
+            // 管理員操作函數 (透傳給 AdminDashboard)
+            const handleCreateUser = async (newUser) => { 
+                if (usersData.some(u => u.id === newUser.id)) { alert("帳號已存在"); return; } 
+                await setDoc(doc(db, 'apps', APP_ID, COL_USERS, newUser.id), { ...newUser, role: 'player' }); 
+                alert("創建成功"); 
+            };
+            const handleDeleteUser = async (uid) => alert("請至 Firebase Console 刪除。");
+            const handleUpdateUserBalance = async (uid, val) => { 
+                const u = usersData.find(x => x.id === uid); 
+                if (u) await setDoc(doc(db, 'apps', APP_ID, COL_USERS, uid), { ...u, balance: val }); 
+            };
+            const handleUpdateConfig = async (newCfg) => await setDoc(doc(db, 'apps', APP_ID, COL_CONFIG, 'main'), newCfg);
+            const handleResetData = async () => { 
+                if (confirm("確定重置？")) { 
+                    await setDoc(doc(db, 'apps', APP_ID, COL_CONFIG, 'main'), DEFAULT_CONFIG); 
+                    alert("已重置設定"); 
+                } 
+            };
+
+            // --- 渲染邏輯 ---
+
+            // A. 管理員視圖
+            if (user.role === 'admin') {
+                return (
+                    <div className="relative w-full h-full">
+                        {/* 如果沒選桌子，顯示後台 */}
+                        {!currentTable && (
+                            <AdminDashboard 
+                                users={usersData} 
+                                onCreateUser={handleCreateUser} 
+                                onDeleteUser={handleDeleteUser} 
+                                onUpdateUserBalance={handleUpdateUserBalance} 
+                                config={configData} 
+                                onUpdateConfig={handleUpdateConfig} 
+                                onLogout={onBack} // ★ 關鍵：管理員登出 = 返回平台大廳
+                                onResetData={handleResetData}
+                                onSelectTable={(id) => setCurrentTable(id)} 
+                            />
+                        )}
+                        
+                        {/* 如果選了桌子，進入遊戲測試 */}
+                        {currentTable && (
+                            <GameEngine 
+                                user={user} 
+                                globalConfig={configData} 
+                                tableId={currentTable} 
+                                onLeaveTable={() => setCurrentTable(null)} // 退出測試回到後台
+                                onUpdateBalance={() => {}} 
+                                onLogout={onBack} 
+                            />
+                        )}
+                    </div>
+                );
+            }
+
+            // B. 玩家視圖
+            return (
+                <>
+                    {!currentTable ? (
+                        <TableLobby 
+                            user={user} 
+                            tableCount={configData.tableCount || 12} 
+                            onSelectTable={(id) => setCurrentTable(id)} 
+                            onLogout={onBack} // ★ 關鍵：玩家在大廳登出 = 返回平台大廳
+                        />
+                    ) : (
+                        <GameEngine 
+                            user={user} 
+                            globalConfig={configData} 
+                            tableId={currentTable} 
+                            onLeaveTable={() => setCurrentTable(null)} // 退出桌子回到選桌
+                            onUpdateBalance={(val) => {
+                                // 更新餘額到資料庫 (共用)
+                                const userRef = doc(db, 'apps', APP_ID, COL_USERS, user.id);
+                                updateDoc(userRef, { balance: val }).catch(console.error);
+                            }} 
+                            onLogout={onBack} 
+                        />
+                    )}
+                </>
+            );
+        }
+        
