@@ -1,12 +1,11 @@
-import React from 'https://esm.sh/react@18.2.0';
-import { 
-    LogOut, Coins, Flame, Play, Lock 
-} from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
+import React from 'react'; // 保留這個，刪除 https://esm.sh/... 那行
+import { LogOut, Coins, Flame, Play, Lock } from 'lucide-react';
 
 // ==========================================
 // [2] 平台大廳 (Platform Lobby)
 // ==========================================
 // 這是登入後的主選單，玩家在這裡選擇要玩哪款遊戲
+
 export default function GamePlatformLobby({ user, onSelectGame, onLogout }) {
     return (
         <div className="min-h-screen bg-[#0f0500] text-white font-noto flex flex-col items-center p-4 md:p-8 animate-in fade-in">

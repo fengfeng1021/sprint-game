@@ -1,16 +1,15 @@
-import React, { useState, useEffect, useRef, useCallback } from 'https://esm.sh/react@18.2.0';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
     Settings, Play, Plus, Minus, RotateCw, X, ShoppingCart, 
     Trophy, Activity, BarChart2, ChevronsRight, Volume2, VolumeX, 
     LogOut, Loader2, Smartphone, Coins, Flame, Lock, Upload, Download, Terminal,
     Users, Database, RefreshCw, PlusCircle, Trash2
-} from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
+} from 'lucide-react';
 
 import { 
     collection, doc, setDoc, onSnapshot, updateDoc, increment, getDoc 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+} from "firebase/firestore"; // 注意這裡要改為 firebase/firestore
 
-// [補回 spawnCoins]
 const spawnCoins = (amount = 20) => {
     const body = document.body;
     for (let i = 0; i < amount; i++) {
@@ -354,8 +353,9 @@ const spawnCoins = (amount = 20) => {
                 if (cheat.cascades !== undefined && cheat.cascades !== null) {
                     totalCascades = cheat.cascades;
                 } else {
-                    const prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
-                    while (Math.random() < prob && totalCascades < 20) { totalCascades++; prob *= 0.8; }
+                    // 修改後：
+let prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
+while (Math.random() < prob && totalCascades < 20) { totalCascades++; prob *= 0.8; }
                 }
             } else {
                 const emptyRate = config.emptySpinProbability || 0.2;
@@ -1549,7 +1549,7 @@ const smartWait = (ms, isFastMode = false) => {
                     if (cheat.cascades !== undefined && cheat.cascades !== null) {
                         totalCascades = cheat.cascades;
                     } else {
-                        const prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
+                        let prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
                         while (Math.random() < prob && totalCascades < 20) { totalCascades++; }
                     }
                 } else {
@@ -3236,7 +3236,7 @@ const handleCreate = () => {
         // 這是原本的核心遊戲邏輯，現在被封裝成一個獨立組件
         // 它只負責「賽特」這款遊戲內部的選桌、遊玩、管理
         // 加上 export default，並接收環境變數 db, APP_ID 等
-        export default function SethCasinoGame({ user, onBack, db, APP_ID, COL_CONFIG, COL_USERS }) {
+       export default function SethCasinoGame({ user, onBack, db, APP_ID, COL_CONFIG, COL_USERS }) {
             // 狀態：遊戲內的配置與桌台
             const [configData, setConfigData] = useState(DEFAULT_CONFIG);
             const [currentTable, setCurrentTable] = useState(null);

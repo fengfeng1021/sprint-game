@@ -1,0 +1,191 @@
+/* 1. 字體引入 (CSS 規定 @import 必須在最前面) */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Noto+Sans+TC:wght@400;700&family=Roboto+Condensed:wght@700&family=Rye&display=swap');
+
+/* 2. Tailwind 必要指令 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* 3. 全局樣式設定 */
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #000;
+    color: white;
+    touch-action: manipulation; /* 禁止雙擊縮放 */
+    -webkit-touch-callout: none; /* 禁止 iOS 長按 */
+    overscroll-behavior: none; /* 禁止橡皮筋效果 */
+    font-family: 'Noto Sans TC', sans-serif;
+}
+
+/* 字體工具類 */
+.font-cinzel { font-family: 'Cinzel', serif; }
+.font-roboto { font-family: 'Roboto Condensed', sans-serif; }
+.font-noto { font-family: 'Noto Sans TC', sans-serif; }
+
+/* 黃金字體特效 */
+.font-egyptian-gold {
+    font-family: 'Rye', cursive;
+    background: linear-gradient(to bottom, #fff7ed 20%, #fbbf24 45%, #d97706 75%, #78350f 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 1.5px #290d02;
+    text-shadow: 0 2px 0 #451a03, 0 4px 4px rgba(0, 0, 0, 0.8), 0 0 15px rgba(251, 191, 36, 0.3);
+}
+
+.font-gold-3d {
+    font-family: 'Rye', serif;
+    background: linear-gradient(180deg, #fffbeb 10%, #fbbf24 45%, #d97706 80%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    -webkit-text-stroke: 1.5px #451a03;
+    filter: drop-shadow(0 2px 0 #451a03) drop-shadow(0 4px 2px rgba(0, 0, 0, 0.5));
+    font-weight: normal;
+}
+
+/* 自定義滾動條 */
+.custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scroll::-webkit-scrollbar-track { background: #0f0500; }
+.custom-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+
+/* --- 4. 遊戲動畫 (從原 index.html 移植) --- */
+
+/* 下落動畫 */
+@keyframes fallingDown {
+    0% { transform: translateY(-500%); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+.animate-heavy-drop { 
+    animation: fallingDown calc(0.5s / var(--speed-factor, 1)) ease-out both; 
+}
+
+@keyframes survivorDrop {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(0); }
+}
+.animate-survivor-drop { 
+    animation: survivorDrop calc(0.4s / var(--speed-factor, 1)) cubic-bezier(0.25, 1, 0.5, 1) both; 
+}
+
+/* 消除閃爍動畫 */
+@keyframes borderGlowEffect {
+    0% { border-color: transparent; background: rgba(46, 16, 101, 0.3); box-shadow: none; z-index: 50; transform: scale(1); }
+    10% { border-color: #e0ffff; background: rgba(0, 255, 200, 0.1); box-shadow: inset 0 0 10px #00ffea, inset 0 0 40px rgba(0, 255, 100, 0.6), 0 0 15px #00ffea; opacity: 1; }
+    37.5% { border-color: #ffffff; background: rgba(255, 255, 255, 0.3); box-shadow: inset 0 0 30px #ffffff, 0 0 40px #ffffff; }
+    75% { border-color: #e0ffff; background: rgba(0, 255, 200, 0.1); box-shadow: inset 0 0 10px #00ffea, inset 0 0 40px rgba(0, 255, 100, 0.6), 0 0 15px #00ffea; transform: scale(1); opacity: 1; }
+    90% { border-color: #ffffff; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 60px #ffffff, inset 0 0 60px #ffffff; transform: scale(1.05); }
+    100% { border-color: #ffffff; background: transparent; box-shadow: 0 0 100px transparent; transform: scale(1); opacity: 0; }
+}
+
+@keyframes symbolRotateScale {
+    0% { transform: perspective(500px) translate3d(0, 0, 0) rotateY(0deg) scale(1); filter: brightness(1); }
+    20% { transform: perspective(500px) translate3d(-10%, 0, 0) rotateY(-30deg) scale(1.02); filter: brightness(1.1); }
+    37.5% { transform: perspective(500px) translate3d(0, 0, 30px) rotateY(0deg) scale(1.08); filter: brightness(1.4) contrast(1.2) drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)); }
+    55% { transform: perspective(500px) translate3d(10%, 0, 0) rotateY(30deg) scale(1.02); filter: brightness(1.1); }
+    75% { transform: perspective(500px) translate3d(0, 0, 0) rotateY(0deg) scale(1); filter: brightness(1); opacity: 1; }
+    85% { transform: perspective(500px) translate3d(0, 0, -30px) rotateY(0deg) scale(0.95); filter: brightness(2) contrast(1.5); }
+    100% { transform: perspective(500px) translate3d(0, 0, 80px) rotateY(0deg) scale(2); filter: brightness(5) blur(20px); opacity: 0; }
+}
+
+.animate-eliminate-shake {
+    animation: borderGlowEffect calc(2s / var(--speed-factor, 1)) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    border-width: 4px; border-style: solid; box-sizing: border-box;
+}
+.animate-eliminate-shake img, .animate-eliminate-shake>div {
+    animation: symbolRotateScale calc(2s / var(--speed-factor, 1)) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    will-change: transform, filter, opacity;
+}
+
+/* 人物施法動畫 */
+@keyframes characterCastAction {
+    0% { transform: translateY(-50%) scale(1); filter: brightness(1) drop-shadow(0 10px 20px rgba(0, 0, 0, 0.8)); }
+    20% { transform: translateY(-50%) scale(1.1); filter: brightness(1.3) contrast(1.1) drop-shadow(0 0 30px rgba(255, 215, 0, 0.8)); }
+    100% { transform: translateY(-50%) scale(1); filter: brightness(1) drop-shadow(0 10px 20px rgba(0, 0, 0, 0.8)); }
+}
+.animate-character-cast { 
+    animation: characterCastAction calc(0.8s / var(--speed-factor, 1)) ease-out forwards; 
+    z-index: 20 !important; 
+}
+
+/* 閃電與衝擊波 */
+@keyframes fallingLightningBolt {
+    0% { opacity: 0; transform: translateY(-100%) scaleX(0.2); }
+    15% { opacity: 1; transform: translateY(0) scaleX(1); filter: brightness(2.5); }
+    60% { opacity: 1; transform: translateY(0) scaleX(1); filter: brightness(2.5); }
+    100% { opacity: 0; transform: translateY(0) scaleX(0); }
+}
+@keyframes impactShockwave {
+    0% { opacity: 0; transform: scale(0.2); }
+    15% { opacity: 1; transform: scale(1.45); background: radial-gradient(circle, #ffffff 20%, #00eaff 80%, #0044aa 100%); box-shadow: 0 0 40px #00eaff, inset 0 0 20px #ffffff; filter: brightness(2.5); z-index: 90; }
+    60% { opacity: 1; transform: scale(1.45); filter: brightness(1.8); }
+    100% { opacity: 0; transform: scale(0); }
+}
+
+.lightning-bolt-container {
+    position: absolute; top: -100%; bottom: 50%; left: 40%; right: 40%; z-index: 95; pointer-events: none;
+    background: linear-gradient(to bottom, transparent 0%, rgba(0, 68, 170, 0.8) 70%, #00eaff 90%, #ffffff 100%);
+    filter: drop-shadow(0 0 10px #00eaff) blur(3px) brightness(2.5); border-radius: 0 0 100px 100px;
+    animation: fallingLightningBolt calc(0.8s / var(--speed-factor, 1)) ease-out forwards;
+}
+.lightning-impact-cell {
+    position: absolute; inset: 0; z-index: 90; pointer-events: none; border-radius: 50%; filter: blur(3px);
+    animation: impactShockwave calc(0.8s / var(--speed-factor, 1)) ease-out forwards;
+}
+
+/* 贏分動畫 */
+@keyframes floatGroupWin {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    20% { transform: translate(-50%, -150%) scale(1.5); opacity: 1; text-shadow: 0 0 20px gold; }
+    80% { transform: translate(-50%, -200%) scale(1.5); opacity: 1; }
+    100% { transform: translate(-50%, -300%) scale(1); opacity: 0; }
+}
+
+@keyframes winPulse {
+    0% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.15); filter: brightness(1.3) drop-shadow(0 0 10px gold); }
+    100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* 金幣粒子系統 */
+@keyframes coinFall3D {
+    0% { transform: translate3d(0, -100px, 0) rotateX(0) rotateY(0) scale(0.5); opacity: 0; }
+    10% { opacity: 1; transform: translate3d(0, 0, 0) rotateX(45deg) rotateY(180deg) scale(1); }
+    100% { transform: translate3d(0, 110vh, 0) rotateX(360deg) rotateY(1080deg) scale(1); opacity: 0; }
+}
+@keyframes sparkBurst {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0); opacity: 0; }
+}
+
+.coin-particle {
+    position: fixed; top: 0; left: 0; width: 40px; height: 40px;
+    background: radial-gradient(circle at 30% 30%, #fff7ed, #ffd700, #b45309);
+    border-radius: 50%; border: 2px solid #fbbf24;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 0 10px rgba(255,215,0,0.8);
+    z-index: 9999; pointer-events: none; will-change: transform;
+    animation: coinFall3D calc(var(--duration, 3s) / var(--speed-factor, 1)) linear forwards;
+    animation-delay: calc(var(--delay, 0s) / var(--speed-factor, 1));
+}
+.coin-particle::after {
+    content: '$'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-family: 'Times New Roman', serif; font-weight: bold; color: #92400e; font-size: 24px; opacity: 0.8;
+}
+.click-particle {
+    position: fixed; width: 6px; height: 6px; background: #fff; border-radius: 50%;
+    box-shadow: 0 0 10px #ffd700, 0 0 20px #fbbf24; z-index: 99999; pointer-events: none;
+    animation: sparkBurst calc(0.6s / var(--speed-factor, 1)) ease-out forwards;
+}
+
+/* 背景呼吸光效 */
+@keyframes bgBreathingAnim {
+    0% { opacity: 0.2; transform: translate(-50%, -50%) scale(0.8); }
+    50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.2); }
+    100% { opacity: 0.2; transform: translate(-50%, -50%) scale(0.8); }
+}
+.bg-breathing-light {
+    position: absolute; top: 50%; left: 50%; width: 120vmax; height: 120vmax;
+    background: radial-gradient(circle, rgba(251, 191, 36, 0.15) 0%, rgba(180, 83, 9, 0.05) 40%, transparent 70%);
+    pointer-events: none; z-index: 5; mix-blend-mode: screen; will-change: transform, opacity;
+    animation: bgBreathingAnim calc(5s / var(--speed-factor, 1)) infinite ease-in-out;
+}
