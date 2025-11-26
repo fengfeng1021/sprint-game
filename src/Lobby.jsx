@@ -36,7 +36,10 @@ export default function GamePlatformLobby({ user, onSelectGame, onLogout }) {
                     onClick={() => onSelectGame('seth')}
                     className="group relative aspect-[3/4] rounded-2xl overflow-hidden border-2 border-[#fbbf24]/30 hover:border-[#fbbf24] transition-all duration-500 hover:scale-105 hover:shadow-[0_0_50px_rgba(251,191,36,0.4)] bg-[#1c1917] text-left"
                 >
-                    <img src="./images/golden-seth.jpg" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-500 scale-105 group-hover:scale-110" />
+                    <img 
+    src="/images/golden-seth.jpg" // <-- 將 `./` 替換為 `/`
+    className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-500 scale-105 group-hover:scale-110" 
+/>
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
                     
                     <div className="absolute bottom-0 left-0 w-full p-8">
