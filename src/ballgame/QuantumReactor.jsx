@@ -1,6 +1,6 @@
 // src/ballgame/QuantumReactor.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { LogOut, Zap, RotateCcw, Trophy, Volume2, VolumeX, Info, X } from 'lucide-react';
+import { LogOut, Zap, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import BallGameScene from './Scene3D';
 import { QuantumReactorLogic, PAYOUT_TABLE, BALL_COLORS } from './GameLogic';
 
@@ -43,7 +43,7 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
     const [bet, setBet] = useState(100);
     const [gameResult, setGameResult] = useState(null);
     const [displayWin, setDisplayWin] = useState(0);
-    const [showPayout, setShowPayout] = useState(false);
+    // const [showPayout, setShowPayout] = useState(false); // 已改為常駐顯示
     const [soundEnabled, setSoundEnabled] = useState(true);
     
     const [logic] = useState(() => new QuantumReactorLogic());
@@ -155,8 +155,8 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
                 {/* Top Header */}
                 <div className="flex justify-between items-start pointer-events-auto">
                     <div className="bg-black/60 backdrop-blur border-l-4 border-cyan-500 p-3 rounded-r-xl shadow-lg shadow-cyan-500/20">
-                        <h1 className="text-cyan-400 font-bold text-xl tracking-widest">QUANTUM REACTOR</h1>
-                        <div className="text-[10px] text-cyan-700 uppercase tracking-[0.5em]">Status: {gameState}</div>
+                        <h1 className="text-cyan-400 font-bold text-xl tracking-widest">量子反應堆</h1>
+                        <div className="text-[10px] text-cyan-700 uppercase tracking-[0.5em]">狀態: {gameState}</div>
                     </div>
                     
                     <div className="flex gap-3">
@@ -173,24 +173,24 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
                 <div className="absolute top-1/3 left-1/2 -translate-x-1/2 text-center pointer-events-none">
                     {gameState === 'SCRAMBLE' && (
                         <div className="text-cyan-200 text-opacity-80 animate-pulse tracking-[0.2em] text-sm">
-                            SYSTEM UNSTABLE... WAITING FOR SYNC
+                            系統不穩定... 等待同步
                         </div>
                     )}
                     {gameState === 'SYNCING' && (
                         <div className="text-red-400 font-black text-2xl animate-bounce tracking-widest drop-shadow-[0_0_10px_red]">
-                            RELEASE TO CAPTURE!
+                            鬆開按鈕進行捕獲!
                         </div>
                     )}
                 </div>
 
-                {/* Result Overlay */}
+                {/* Result Overlay - 修改位置到底部，避免擋住中間的球 */}
                 {gameState === 'RESULT' && gameResult && (
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto text-center animate-in zoom-in duration-300 z-20 w-full max-w-md px-4">
-                        <div className={`p-6 md:p-8 border-2 bg-black/90 backdrop-blur-xl rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.9)] ${gameResult.isWin ? 'border-green-500 shadow-[0_0_50px_#00ff88]' : 'border-red-900 shadow-[0_0_30px_#ff0055]'}`}>
-                            <div className="text-5xl md:text-7xl font-black mb-2 font-cinzel drop-shadow-lg" style={{ color: gameResult.isWin ? '#00ff88' : '#ff0055' }}>
-                                {gameResult.isWin ? `WIN` : 'LOST'}
+                    <div className="absolute bottom-32 left-1/2 -translate-x-1/2 pointer-events-auto text-center animate-in slide-in-from-bottom-10 duration-300 z-20 w-full max-w-md px-4">
+                        <div className={`p-4 md:p-6 border-2 bg-black/80 backdrop-blur-md rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] ${gameResult.isWin ? 'border-green-500 shadow-[0_0_30px_#00ff88]' : 'border-red-900 shadow-[0_0_20px_#ff0055]'}`}>
+                            <div className="text-4xl md:text-6xl font-black mb-1 font-cinzel drop-shadow-lg" style={{ color: gameResult.isWin ? '#00ff88' : '#ff0055' }}>
+                                {gameResult.isWin ? `獲勝` : '未中獎'}
                             </div>
-                            {gameResult.isWin && <div className="text-3xl text-white font-mono mb-4 tracking-widest">${displayWin}</div>}
+                            {gameResult.isWin && <div className="text-2xl text-white font-mono mb-2 tracking-widest">${displayWin}</div>}
                             
                             <div className="flex justify-center gap-4 mb-8 py-4 border-y border-white/10">
                                 {Object.entries(gameResult.counts).map(([color, count]) => (
@@ -209,9 +209,9 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
 
                             <button 
                                 onClick={resetGame}
-                                className="w-full py-4 bg-white text-black font-black text-lg rounded-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                                className="w-full py-3 bg-white text-black font-black text-lg rounded-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.3)]"
                             >
-                                <RotateCcw size={20} /> REBOOT SYSTEM
+                                <RotateCcw size={20} /> 重啟系統
                             </button>
                         </div>
                     </div>
@@ -222,19 +222,17 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
                     
                     {/* Left Info */}
                     <div className="hidden md:block bg-black/60 backdrop-blur border border-white/10 p-4 rounded-lg">
-                        <div className="text-[10px] text-gray-500 uppercase">Current Balance</div>
+                        <div className="text-[10px] text-gray-500 uppercase">當前餘額</div>
                         <div className="text-2xl text-white font-mono font-bold">${Math.floor(user.balance).toLocaleString()}</div>
                     </div>
 
                     {/* Main Action Area */}
                     <div className="w-full md:w-auto bg-black/80 backdrop-blur border-t-2 border-cyan-500/50 p-6 rounded-t-3xl md:rounded-2xl flex flex-col gap-4 shadow-[0_-10px_50px_rgba(0,255,255,0.15)] relative overflow-hidden">
-                        {/* Glass Reflection */}
-                        <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/5 to-transparent pointer-events-none"></div>
-
+                        
                         <div className="flex items-center justify-between gap-8">
                             {/* Bet Adjust */}
                             <div className="flex flex-col items-center">
-                                <div className="text-cyan-500 text-[10px] font-bold uppercase tracking-widest mb-1">Energy Input</div>
+                                <div className="text-cyan-500 text-[10px] font-bold uppercase tracking-widest mb-1">能量投入</div>
                                 <div className="flex items-center bg-black/50 rounded-lg border border-cyan-900">
                                     <button onClick={() => handleBetChange(-10)} disabled={gameState!=='IDLE'&&gameState!=='RESULT'} className="w-10 h-10 hover:bg-cyan-900/50 text-cyan-400 flex items-center justify-center text-xl disabled:opacity-30">-</button>
                                     <div className="w-20 text-center font-mono text-xl text-white font-bold">{bet}</div>
@@ -242,25 +240,15 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
                                 </div>
                             </div>
 
-                            {/* Odds Button */}
-                            <button onClick={() => setShowPayout(true)} className="flex flex-col items-center text-gray-400 hover:text-white transition-colors">
-                                <Info size={20} />
-                                <span className="text-[9px] mt-1 uppercase">Odds</span>
-                            </button>
-                        </div>
+                            </div>
 
                         {/* Big Interaction Button */}
-                        {/* 逻辑: 
-                            IDLE/RESULT -> 点击 "INITIATE" 进入 SCRAMBLE
-                            SCRAMBLE -> 显示 "HOLD TO SYNC"
-                            SYNCING -> 松开即 "CAPTURE"
-                        */}
                         {(gameState === 'IDLE' || gameState === 'RESULT') ? (
                             <button 
                                 onClick={initSequence}
                                 className="w-full h-16 bg-gradient-to-r from-cyan-600 to-blue-700 text-white font-black text-xl tracking-widest rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.4)] hover:brightness-110 transition-all active:scale-95 flex items-center justify-center gap-2"
                             >
-                                <Zap fill="white" /> INITIATE
+                                <Zap fill="white" /> 啟動系統
                             </button>
                         ) : (gameState === 'SCRAMBLE' || gameState === 'SYNCING') ? (
                             <button
@@ -274,18 +262,35 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
                                         : 'bg-black border-cyan-400 text-cyan-400 animate-pulse shadow-[0_0_15px_cyan]'}
                                 `}
                             >
-                                {gameState === 'SYNCING' ? 'RELEASE NOW!' : 'HOLD TO SYNC'}
+                                {gameState === 'SYNCING' ? '鬆開按鈕!' : '按住充能'}
                             </button>
                         ) : (
                             <button disabled className="w-full h-16 bg-gray-800 text-gray-500 font-bold rounded-lg cursor-not-allowed border border-gray-700">
-                                PROCESSING...
+                                處理中...
                             </button>
                         )}
                     </div>
                 </div>
             </div>
 
-            <PayoutModal isOpen={showPayout} onClose={() => setShowPayout(false)} />
+            {/* 常駐右側賠率表 */}
+            <div className="hidden md:block absolute top-20 right-4 bottom-32 w-56 bg-black/40 backdrop-blur border border-cyan-900/50 rounded-xl p-4 overflow-y-auto custom-scroll select-none pointer-events-none">
+                <h2 className="text-lg font-cinzel font-bold text-cyan-400 mb-3 text-center tracking-widest border-b border-cyan-900 pb-2">
+                    系統賠率
+                </h2>
+                <div className="space-y-1.5 font-mono text-xs">
+                    {Object.entries(PAYOUT_TABLE).sort((a,b) => b[1] - a[1]).map(([pattern, mult]) => (
+                        <div key={pattern} className="flex justify-between items-center p-2 bg-cyan-900/20 rounded border border-cyan-900/30">
+                            <div className="flex gap-1">
+                                {pattern.split(':').map((count, i) => (
+                                    <span key={i} className={`font-bold ${i===0?'text-cyan-300':i===1?'text-pink-400':'text-green-400'}`}>{count}</span>
+                                ))}
+                            </div>
+                            <div className="text-yellow-400 font-bold">x{mult}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }

@@ -86,14 +86,12 @@ const QuantumBall = ({ data, index, total, gameState, finalPositions }) => {
             const resultIndex = finalPositions.findIndex(b => b.uid === data.uid);
             
             if (resultIndex !== -1) {
-                // 这里的球是被选中的
-                // 计算 3x3 矩阵位置
-                const row = Math.floor(resultIndex / 3);
-                const col = resultIndex % 3;
-                // 间距 1.5
-                const targetX = (col - 1) * 1.8;
-                const targetY = (1 - row) * 1.8;
-                const targetZ = 6; // 推向镜头
+                // 這裡的球是被選中的
+                // 計算 1x9 線性位置 (從左到右排列)
+                // 索引 0-8，減去 4 讓中心點為 0 (-4 到 +4)
+                const targetX = (resultIndex - 4) * 1.4; 
+                const targetY = 0; // 保持在垂直中心
+                const targetZ = 6; // 推向鏡頭
 
                 gsap.to(mesh.position, {
                     x: targetX, y: targetY, z: targetZ,
