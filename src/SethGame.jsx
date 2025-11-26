@@ -3,7 +3,7 @@ import {
     Settings, Play, Plus, Minus, RotateCw, X, ShoppingCart, 
     Trophy, Activity, BarChart2, ChevronsRight, Volume2, VolumeX, 
     LogOut, Loader2, Smartphone, Coins, Flame, Lock, Upload, Download, Terminal,
-    Users, Database, RefreshCw, PlusCircle, Trash2
+    Users, Database, RefreshCw, PlusCircle, Trash2, Zap
 } from 'lucide-react';
 
 import { 
@@ -87,18 +87,6 @@ const spawnCoins = (amount = 20) => {
             }
         };
 
-        // [新增] 倍數定義池 (帶內部權重)
-        const MULT_POOLS = {
-            // 修改後 (刪除 1x):
-            tier1: [{val:2, weight:50}, {val:3, weight:40}, {val:4, weight:30}, {val:5, weight:15}],
-            
-            tier2: [{val:6, weight:25}, {val:7, weight:15}, {val:8, weight:10}, {val:9, weight:5}, {val:10, weight:2}],
-            tier3: [{val:15, weight:35}, {val:20, weight:25}, {val:25, weight:15}, {val:30, weight:10}],
-            tier4: [{val:35, weight:25}, {val:40, weight:15}, {val:50, weight:5}],
-            tier5: [{val:60, weight:40}, {val:70, weight:25}, {val:80, weight:20}, {val:90, weight:10}, {val:100, weight:5}],
-            tier6: [{val:150, weight:40}, {val:200, weight:25}, {val:250, weight:15}, {val:300, weight:10}],
-            tier7: [{val:350, weight:50}, {val:400, weight:30}, {val:450, weight:10}, {val:500, weight:5}]
-        };
         const getRandomMultiplierSmart = (cfg) => {
             const tierWeights = cfg.multiplierTierWeights || DEFAULT_CONFIG.multiplierTierWeights;
             const totalTierW = Object.values(tierWeights).reduce((a, b) => a + Number(b), 0);
@@ -1085,7 +1073,7 @@ while (Math.random() < prob && totalCascades < 20) { totalCascades++; prob *= 0.
         // ------------------------------------------------------------
         // Game Engine (最终完整版：修复音量变量未定义错误)
         // ------------------------------------------------------------
-        function GameEngine({ user, globalConfig, onLogout, onUpdateBalance, tableId, onLeaveTable }) {
+        function GameEngine({ user, globalConfig, onLogout, onUpdateBalance, tableId, onLeaveTable, db, APP_ID, COL_USERS }) {
             const [config, setConfig] = useState(globalConfig);
             const configRef = useRef(globalConfig);
 
@@ -1413,8 +1401,7 @@ const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
 
             // [Audio Pool] 初始化音频池 (每种音效预加载 5 个实例，无需运行时创建，零开销)
             useEffect(() => {
-                const soundFiles = { 'spin': './sound/sprint.mp3', 'win': './sound/clear.mp3', 'man': './sound/man.mp3', 'woman': './sound/woman.mp3', 'drop': './sound/sprint.mp3', 'bigwin': './sound/clear.mp3' };
-                Object.entries(soundFiles).forEach(([key, src]) => {
+const soundFiles = { 'spin': './sound/sprint.mp3', 'win': './sound/clear.mp3', 'man': './sound/man.mp3', 'woman': './sound/woman.mp3', 'drop': './sound/sprint.mp3', 'bigwin': './sound/clear.mp3', 'click': './sound/sprint.mp3' };                Object.entries(soundFiles).forEach(([key, src]) => {
                     audioPool.current[key] = [];
                     for(let i=0; i<5; i++) { // 预创建5个替身
                         const a = new Audio(src); a.preload = 'auto'; a.volume = sfxVolume;
@@ -2435,7 +2422,7 @@ const smartWait = (ms, isFastMode = false) => {
         }
         // --- [升级] 选桌大厅组件 (Filter & FG Detail) ---
         // --- [修复] 选桌大厅组件 (Correct Version) ---
-        function TableLobby({ tableCount, onSelectTable, user, onLogout }) {
+        function TableLobby({ tableCount, onSelectTable, user, onLogout, db, APP_ID }) {
             const [tables, setTables] = useState([]);
             const [selectedId, setSelectedId] = useState(null);
             const [filter, setFilter] = useState('all'); // 玩家端只用 filter，不用 activeTab
@@ -2590,7 +2577,7 @@ const smartWait = (ms, isFastMode = false) => {
         // ------------------------------------------------------------
         // Admin Dashboard (Updated with Detailed Symbol Config)
         // ------------------------------------------------------------
-            function AdminDashboard({ users, onCreateUser, onDeleteUser, onUpdateUserBalance, config, onUpdateConfig, onLogout, onResetData, onSelectTable }) {
+            function AdminDashboard({ users, onCreateUser, onDeleteUser, onUpdateUserBalance, config, onUpdateConfig, onLogout, onResetData, onSelectTable, db, APP_ID }) {
             const [activeTab, setActiveTab] = useState('monitor');
             const [newUser, setNewUser] = useState({ id: '', name: '', password: '', balance: 10000 });
             const [localWeights, setLocalWeights] = useState(config.symbolWeights || DEFAULT_CONFIG.symbolWeights);
@@ -3302,6 +3289,8 @@ const handleCreate = () => {
                                 onLogout={onBack} // ★ 關鍵：管理員登出 = 返回平台大廳
                                 onResetData={handleResetData}
                                 onSelectTable={(id) => setCurrentTable(id)} 
+                                db={db}
+                                APP_ID={APP_ID}
                             />
                         )}
                         
@@ -3314,6 +3303,9 @@ const handleCreate = () => {
                                 onLeaveTable={() => setCurrentTable(null)} // 退出測試回到後台
                                 onUpdateBalance={() => {}} 
                                 onLogout={onBack} 
+                                db={db}
+                                APP_ID={APP_ID}
+                                COL_USERS={COL_USERS}
                             />
                         )}
                     </div>
@@ -3329,6 +3321,8 @@ const handleCreate = () => {
                             tableCount={configData.tableCount || 12} 
                             onSelectTable={(id) => setCurrentTable(id)} 
                             onLogout={onBack} // ★ 關鍵：玩家在大廳登出 = 返回平台大廳
+                            db={db}
+                            APP_ID={APP_ID}
                         />
                     ) : (
                         <GameEngine 
@@ -3342,6 +3336,9 @@ const handleCreate = () => {
                                 updateDoc(userRef, { balance: val }).catch(console.error);
                             }} 
                             onLogout={onBack} 
+                            db={db}
+                            APP_ID={APP_ID}
+                            COL_USERS={COL_USERS}
                         />
                     )}
                 </>
