@@ -5,26 +5,25 @@ export default function GamePlatformLobby({ user, onSelectGame, onLogout }) {
     return (
         <div className="min-h-screen bg-[#0f0500] text-white font-noto flex flex-col items-center p-4 md:p-8 animate-in fade-in">
             
-            <div className="w-full max-w-6xl flex justify-between items-center mb-12 border-b border-[#fbbf24]/30 pb-6">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#fbbf24] to-[#b45309] flex items-center justify-center text-black font-bold text-xl shadow-lg border border-white/20">
+            <div className="w-full max-w-6xl flex flex-col md:flex-row justify-between items-center mb-8 md:mb-12 border-b border-[#fbbf24]/30 pb-6 gap-4">
+                <div className="flex items-center gap-4 w-full md:w-auto justify-center md:justify-start">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#fbbf24] to-[#b45309] flex items-center justify-center text-black font-bold text-xl shadow-lg border border-white/20 shrink-0">
                         {user.name ? user.name[0].toUpperCase() : 'U'}
                     </div>
-                    <div>
+                    <div className="text-left">
                         <div className="text-xl font-bold text-white">{user.name}</div>
                         <div className="text-sm text-[#fbbf24] font-mono flex items-center gap-1">
                             <Coins size={14}/> ${Math.floor(user.balance).toLocaleString()}
                         </div>
                     </div>
                 </div>
-                <button onClick={onLogout} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors bg-white/5 px-4 py-2 rounded-full hover:bg-white/10 border border-white/5">
-                    <LogOut size={18} /> <span className="hidden md:inline">登出平台</span>
+                <button onClick={onLogout} className="w-full md:w-auto flex items-center justify-center gap-2 text-gray-400 hover:text-white transition-colors bg-white/5 px-6 py-2 rounded-full hover:bg-white/10 border border-white/5 active:scale-95">
+                    <LogOut size={18} /> <span>登出平台</span>
                 </button>
             </div>
-
-            <div className="text-center mb-12">
-                <div className="text-[#fbbf24] text-xs font-bold tracking-[0.5em] mb-2 uppercase">Welcome to Seth Games</div>
-                <h1 className="text-4xl md:text-6xl font-cinzel font-bold text-transparent bg-clip-text bg-gradient-to-b from-[#fff7ed] via-[#fbbf24] to-[#b45309] tracking-widest drop-shadow-lg">
+            <div className="text-center mb-8 md:mb-12">
+                <div className="text-[#fbbf24] text-[10px] md:text-xs font-bold tracking-[0.3em] md:tracking-[0.5em] mb-2 uppercase">Welcome to Seth Games</div>
+                <h1 className="text-3xl md:text-6xl font-cinzel font-bold text-transparent bg-clip-text bg-gradient-to-b from-[#fff7ed] via-[#fbbf24] to-[#b45309] tracking-widest drop-shadow-lg">
                     GAME LOBBY
                 </h1>
             </div>
