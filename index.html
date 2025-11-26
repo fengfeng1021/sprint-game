@@ -518,7 +518,7 @@
             RotateCw, Zap, X, Save, LogOut, Terminal, ChevronsRight, Smartphone,
             Trophy, Flame, Trash2, PlusCircle, RefreshCw, Database,
             Activity, BarChart2, Hash, Cpu, Cloud, Loader2, AlertTriangle, Copy,
-            ShoppingCart, Coins, Volume2, VolumeX
+            ShoppingCart, Coins, Volume2, VolumeX, Upload, Download
 
         } from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
 
@@ -665,7 +665,10 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
 
             // [新增] 內部權重池 (您要求的結構)
             multiplierInternalWeights: {
-                tier1: [{val:1, weight:60}, {val:2, weight:50}, {val:3, weight:40}, {val:4, weight:30}, {val:5, weight:15}],
+                // 修改前: [{val:1, weight:60}, {val:2, weight:50}, ...]
+                // 修改後 (刪除 1x):
+                tier1: [{val:2, weight:50}, {val:3, weight:40}, {val:4, weight:30}, {val:5, weight:15}],
+                
                 tier2: [{val:6, weight:25}, {val:7, weight:15}, {val:8, weight:10}, {val:9, weight:5}, {val:10, weight:2}],
                 tier3: [{val:15, weight:35}, {val:20, weight:25}, {val:25, weight:15}, {val:30, weight:10}],
                 tier4: [{val:35, weight:25}, {val:40, weight:15}, {val:50, weight:5}],
@@ -677,7 +680,9 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
 
         // [新增] 倍數定義池 (帶內部權重)
         const MULT_POOLS = {
-            tier1: [{val:1, weight:60}, {val:2, weight:50}, {val:3, weight:40}, {val:4, weight:30}, {val:5, weight:15}],
+            // 修改後 (刪除 1x):
+            tier1: [{val:2, weight:50}, {val:3, weight:40}, {val:4, weight:30}, {val:5, weight:15}],
+            
             tier2: [{val:6, weight:25}, {val:7, weight:15}, {val:8, weight:10}, {val:9, weight:5}, {val:10, weight:2}],
             tier3: [{val:15, weight:35}, {val:20, weight:25}, {val:25, weight:15}, {val:30, weight:10}],
             tier4: [{val:35, weight:25}, {val:40, weight:15}, {val:50, weight:5}],
@@ -685,8 +690,6 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             tier6: [{val:150, weight:40}, {val:200, weight:25}, {val:250, weight:15}, {val:300, weight:10}],
             tier7: [{val:350, weight:50}, {val:400, weight:30}, {val:450, weight:10}, {val:500, weight:5}]
         };
-
-        // [新增] 輔助函數：根據層級權重 + 內部權重抽取倍數
         const getRandomMultiplierSmart = (cfg) => {
             const tierWeights = cfg.multiplierTierWeights || DEFAULT_CONFIG.multiplierTierWeights;
             const totalTierW = Object.values(tierWeights).reduce((a, b) => a + Number(b), 0);
@@ -698,9 +701,16 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                 if (r <= 0) { selectedTier = tier; break; }
             }
             
-            // [修改] 從配置中讀取內部權重，如果沒有則使用預設
+            // [修改] 從配置中讀取內部權重
             const pools = cfg.multiplierInternalWeights || DEFAULT_CONFIG.multiplierInternalWeights;
-            const pool = pools[selectedTier] || pools['tier1']; // Fallback
+            const rawPool = pools[selectedTier] || pools['tier1']; 
+
+            // ★★★【核心修復】在此處強制過濾掉 1倍球 (val: 1) ★★★
+            // 這樣就算資料庫裡還有髒數據，遊戲運算時也會直接無視它
+            const pool = rawPool.filter(item => item.val !== 1);
+
+            // 防呆：如果過濾後空了(理論上不會發生)，就給個默認值
+            if (pool.length === 0) return 2; 
 
             const totalInternalW = pool.reduce((a, item) => a + Number(item.weight), 0);
             let r2 = Math.random() * totalInternalW;
@@ -940,7 +950,9 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
             } else {
                 const emptyRate = config.emptySpinProbability || 0.2;
                 if (Math.random() < emptyRate) return []; 
-                let prob = 0.5; while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 0.8; }
+                // [修復] 讀取設定檔中的 cascadeProbability，如果沒有則預設 0.5
+                let prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
+                while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 1; }
             }
 
             for (let i = 0; i <= totalCascades; i++) {
@@ -2125,7 +2137,7 @@ const smartWait = (ms, isFastMode = false) => {
                 } else {
                     const emptyRate = config.emptySpinProbability || 0.2;
                     if (Math.random() < emptyRate) return []; 
-                    let prob = 0.5; while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 0.8; }
+                    let prob = 0.5; while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 1; }
                 }
 
                 // B. 分配每一輪的中獎符號
@@ -3342,6 +3354,78 @@ const handleCreate = () => {
                         {/* CONFIG TAB */}
                         {activeTab === 'config' && (
                             <div className="max-w-5xl mx-auto">
+                                
+                                {/* [新增] 配置導入與導出控制區 */}
+                                <div className="bg-[#1c1917] p-6 rounded-lg border border-[#fbbf24]/30 mb-8 animate-in fade-in slide-in-from-top-4">
+                                    <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-4">
+                                        <h2 className="text-xl font-bold flex items-center gap-2 text-[#fbbf24]">
+                                            <Database size={20}/> 配置管理 (Config Manager)
+                                        </h2>
+                                        <div className="text-xs text-gray-400">
+                                            支援格式: .json 文字檔
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex flex-col md:flex-row gap-4">
+                                        {/* 導出按鈕 */}
+                                        <button 
+                                            onClick={() => {
+                                                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2));
+                                                const downloadAnchorNode = document.createElement('a');
+                                                downloadAnchorNode.setAttribute("href", dataStr);
+                                                downloadAnchorNode.setAttribute("download", "seth_casino_config.json");
+                                                document.body.appendChild(downloadAnchorNode);
+                                                downloadAnchorNode.click();
+                                                downloadAnchorNode.remove();
+                                            }}
+                                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded font-bold flex items-center justify-center gap-2 transition-colors border border-blue-500/50 shadow-lg"
+                                        >
+                                            <Download size={18} /> 儲存配置 (Export JSON)
+                                        </button>
+
+                                        {/* 導入按鈕 (隱藏 input) */}
+                                        <label className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border border-emerald-500/50 shadow-lg relative overflow-hidden group">
+                                            <Upload size={18} /> 導入配置 (Import JSON)
+                                            <input 
+                                                type="file" 
+                                                accept=".json" 
+                                                className="hidden" 
+                                                onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (!file) return;
+                                                    
+                                                    const reader = new FileReader();
+                                                    reader.onload = (event) => {
+                                                        try {
+                                                            const importedData = JSON.parse(event.target.result);
+                                                            
+                                                            // 簡單驗證：檢查是否包含關鍵欄位
+                                                            if (!importedData.symbolWeights || !importedData.multiplierTierWeights) {
+                                                                alert("導入失敗：檔案格式錯誤，缺少關鍵設定 (symbolWeights / TierWeights)");
+                                                                return;
+                                                            }
+
+                                                            // 確認對話框
+                                                            if(confirm("確定要覆蓋當前的遊戲設定嗎？\n此操作將立即生效並同步至資料庫。")) {
+                                                                onUpdateConfig(importedData);
+                                                                alert("✅ 配置導入成功！");
+                                                            }
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            alert("導入失敗：JSON 解析錯誤，請檢查檔案格式。");
+                                                        }
+                                                        // 清空 input 以便重複選擇同個檔案
+                                                        e.target.value = '';
+                                                    };
+                                                    reader.readAsText(file);
+                                                }} 
+                                            />
+                                            {/* 視覺效果 */}
+                                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                        </label>
+                                    </div>
+                                </div>
+
                                 <div className="bg-[#1c1917] p-6 rounded-lg border border-white/10 mb-8"><h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-400"><Settings size={20}/> 基础设定</h2><div className="grid grid-cols-2 gap-8"><div><label className="text-sm text-gray-300 mb-2 block">开放桌台数量</label><input type="number" min="1" max="50" value={config.tableCount || 12} onChange={e => onUpdateConfig({ ...config, tableCount: Number(e.target.value) })} className="w-full bg-black border border-white/20 rounded px-3 py-2 text-white font-mono font-bold outline-none focus:border-blue-500" /></div></div></div>
 
                                 {/* --- 第一部分：符號出現機率 (Symbol Probability) --- */}
@@ -3422,18 +3506,23 @@ const handleCreate = () => {
                                                     <span className="text-[10px] text-gray-500">Value : Weight</span>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    {items.map((item, idx) => (
-                                                        <div key={`${tier}-${item.val}`} className="flex items-center gap-2">
-                                                            <div className="w-12 text-right font-mono font-bold text-[#fbbf24] text-xs">{item.val}x</div>
-                                                            <div className="text-gray-600 text-xs">:</div>
-                                                            <input 
-                                                                type="number" 
-                                                                value={item.weight} 
-                                                                onChange={(e) => handleInternalWeightChange(tier, idx, e.target.value)}
-                                                                className="flex-grow bg-black border border-white/10 rounded px-2 py-1 text-xs font-mono text-white focus:border-blue-500 outline-none"
-                                                            />
-                                                        </div>
-                                                    ))}
+                                                    {items.map((item, idx) => {
+    // [新增] 強制隱藏 1x 的輸入框
+    if (item.val === 1) return null;
+
+    return (
+        <div key={`${tier}-${item.val}`} className="flex items-center gap-2">
+            <div className="w-12 text-right font-mono font-bold text-[#fbbf24] text-xs">{item.val}x</div>
+            <div className="text-gray-600 text-xs">:</div>
+            <input 
+                type="number" 
+                value={item.weight} 
+                onChange={(e) => handleInternalWeightChange(tier, idx, e.target.value)}
+                className="flex-grow bg-black border border-white/10 rounded px-2 py-1 text-xs font-mono text-white focus:border-blue-500 outline-none"
+            />
+        </div>
+    );
+})}
                                                 </div>
                                             </div>
                                         ))}
@@ -3508,7 +3597,7 @@ const handleCreate = () => {
                                 <div className="mb-8">
                                     {(() => {
                                         const tiers = [
-                                            { id: 'tier1', name: 'T1 (最低)', desc: '1-5 倍', color: 'text-gray-400' },
+                                            { id: 'tier1', name: 'T1 (最低)', desc: '2-5 倍', color: 'text-gray-400' }, 
                                             { id: 'tier2', name: 'T2 (低)', desc: '6-10 倍', color: 'text-green-400' },
                                             { id: 'tier3', name: 'T3 (中)', desc: '15-30 倍', color: 'text-blue-400' },
                                             { id: 'tier4', name: 'T4 (中高)', desc: '35-50 倍', color: 'text-purple-400' },
