@@ -3,7 +3,7 @@ import { LogOut, Coins, Flame, Play, Lock, Zap } from 'lucide-react';
 
 export default function GamePlatformLobby({ user, onSelectGame, onLogout }) {
     return (
-        <div className="min-h-screen bg-[#0f0500] text-white font-noto flex flex-col items-center p-4 md:p-8 animate-in fade-in">
+        <div className="h-screen overflow-y-auto bg-[#0f0500] text-white font-noto flex flex-col items-center p-4 md:p-8 animate-in fade-in">
             
             <div className="w-full max-w-6xl flex flex-col md:flex-row justify-between items-center mb-8 md:mb-12 border-b border-[#fbbf24]/30 pb-6 gap-4">
                 <div className="flex items-center gap-4 w-full md:w-auto justify-center md:justify-start">

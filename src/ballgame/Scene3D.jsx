@@ -9,6 +9,11 @@ import gsap from 'gsap';
 const QuantumBall = ({ data, index, total, gameState, finalPositions }) => {
     const meshRef = useRef();
     
+    // 判断该球是否在最终结果中
+    const isSelected = useMemo(() => {
+        return finalPositions && finalPositions.some(b => b.uid === data.uid);
+    }, [finalPositions, data.uid]);
+
     const initialPos = useMemo(() => {
         const phi = Math.acos(-1 + (2 * index) / total);
         const theta = Math.sqrt(total * Math.PI) * phi;
@@ -53,13 +58,17 @@ const QuantumBall = ({ data, index, total, gameState, finalPositions }) => {
         if (!meshRef.current) return;
         const mesh = meshRef.current;
 
-        if (gameState === 'IDLE') {
-            // 复位
-            gsap.to(mesh.position, {
-                x: initialPos.x, y: initialPos.y, z: initialPos.z,
-                duration: 1.5, ease: "power2.inOut"
-            });
+        if (gameState === 'IDLE' || gameState === 'SCRAMBLE') {
+            // [关键修复] 连抽时直接进入 SCRAMBLE，必须在此处也重置透明度和发光度，否则球是隐形的
             gsap.to(mesh.material, { opacity: 1, emissiveIntensity: 1, duration: 0.5 });
+            
+            if (gameState === 'IDLE') {
+                // 只有 IDLE 需要复位位置，SCRAMBLE 会由 useFrame 接管位置
+                gsap.to(mesh.position, {
+                    x: initialPos.x, y: initialPos.y, z: initialPos.z,
+                    duration: 1.5, ease: "power2.inOut"
+                });
+            }
         } 
         else if (gameState === 'CHARGING') {
             // 充能震动
@@ -121,8 +130,13 @@ const QuantumBall = ({ data, index, total, gameState, finalPositions }) => {
 
     }, [gameState, initialPos, finalPositions, data.uid, index]);
 
+    // 判断是否是中奖展示状态
+    const isRevealing = gameState === 'REVEAL' || gameState === 'RESULT';
+    // 如果是展示阶段且被选中，层级设为最高(100)，且关闭深度测试(depthTest=false)使其无视遮挡
+    const renderOrder = (isRevealing && isSelected) ? 100 : 1;
+
     return (
-        <mesh ref={meshRef} position={initialPos}>
+        <mesh ref={meshRef} position={initialPos} renderOrder={renderOrder}>
             <sphereGeometry args={[0.6, 32, 32]} />
             <meshStandardMaterial 
                 color={data.hex} 
@@ -132,6 +146,8 @@ const QuantumBall = ({ data, index, total, gameState, finalPositions }) => {
                 metalness={0.9}
                 transparent
                 opacity={1}
+                depthTest={!(isRevealing && isSelected)} // 选中球关闭深度测试，永远显示在最前
+                depthWrite={true}
             />
         </mesh>
     );
@@ -160,17 +176,21 @@ const ForceField = ({ gameState }) => {
     }, [gameState]);
 
     return (
-        <mesh ref={ref} scale={[8, 8, 8]}>
+        <mesh ref={ref} scale={[8, 8, 8]} renderOrder={0}>
             <icosahedronGeometry args={[1, 4]} />
-            <meshBasicMaterial wireframe color="#00aaff" transparent opacity={0.1} />
+            <meshBasicMaterial wireframe color="#00aaff" transparent opacity={0.1} depthWrite={false} />
         </mesh>
     );
 };
 
 export default function BallGameScene({ deck, gameState, finalResult }) {
+    // 简单的响应式判断
+    const isMobile = window.innerWidth < 768;
+    const camPos = [0, 0, isMobile ? 32 : 18];
+
     return (
         <Canvas dpr={[1, 2]} gl={{ antialias: false, toneMapping: THREE.ACESFilmicToneMapping }}>
-            <PerspectiveCamera makeDefault position={[0, 0, 18]} fov={50} />
+            <PerspectiveCamera makeDefault position={camPos} fov={50} />
             <color attach="background" args={['#020203']} />
             
             <ambientLight intensity={0.5} />

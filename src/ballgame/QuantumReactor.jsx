@@ -38,6 +38,7 @@ const PayoutModal = ({ isOpen, onClose }) => {
 };
 
 // --- RTP 模拟器组件 ---
+
 const BallSimulatorModal = ({ isOpen, onClose }) => {
     const [simCount, setSimCount] = useState(1000);
     const [isRunning, setIsRunning] = useState(false);
@@ -149,16 +150,67 @@ const BallSimulatorModal = ({ isOpen, onClose }) => {
     );
 };
 
+// --- 10局结算模态框 ---
+const BatchSummaryModal = ({ isOpen, onClose, stats }) => {
+    if (!isOpen || !stats) return null;
+    const net = stats.totalWin - stats.totalCost;
+    
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+            <div className="w-full max-w-sm bg-[#1c1917] border-2 border-[#fbbf24] rounded-2xl p-6 relative shadow-[0_0_50px_rgba(251,191,36,0.3)] text-center flex flex-col gap-4">
+                <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#fbbf24] text-black font-black px-6 py-1 rounded-full shadow-lg border-2 border-[#451a03] text-sm tracking-widest">
+                    COMPLETE
+                </div>
+                
+                <h2 className="text-2xl font-cinzel font-bold text-white mt-2">10 局結束</h2>
+                
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-black/40 p-3 rounded border border-white/10">
+                        <div className="text-[10px] text-gray-500 uppercase font-bold">總投入</div>
+                        <div className="text-lg font-mono text-gray-300">${stats.totalCost}</div>
+                    </div>
+                    <div className="bg-black/40 p-3 rounded border border-white/10">
+                        <div className="text-[10px] text-gray-500 uppercase font-bold">總獲利</div>
+                        <div className="text-lg font-mono text-[#fbbf24]">${stats.totalWin}</div>
+                    </div>
+                </div>
+
+                <div className={`p-4 rounded-xl border ${net >= 0 ? 'bg-green-900/20 border-green-500/50' : 'bg-red-900/20 border-red-500/50'}`}>
+                    <div className="text-xs uppercase font-bold mb-1 opacity-70">淨盈虧 (Net)</div>
+                    <div className={`text-3xl font-black font-mono ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {net > 0 ? '+' : ''}{net}
+                    </div>
+                </div>
+
+                <button onClick={onClose} className="w-full py-3 bg-[#fbbf24] text-black font-black rounded-lg hover:brightness-110 transition-all shadow-lg active:scale-95">
+                    確認 / CONTINUE
+                </button>
+            </div>
+        </div>
+    );
+};
+
 export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
-    // 状态: IDLE -> SCRAMBLE -> SYNCING (User Hold) -> REVEAL -> RESULT
+    // 状态: IDLE -> SCRAMBLE -> SYNCING (Auto/User) -> REVEAL -> RESULT
     const [gameState, setGameState] = useState('IDLE');
-    const [bet, setBet] = useState(100);
+    const [bet, setBet] = useState(50); 
+    const [roundsLeft, setRoundsLeft] = useState(0); 
     const [gameResult, setGameResult] = useState(null);
     const [displayWin, setDisplayWin] = useState(0);
-    const [showPayout, setShowPayout] = useState(false); // 手机端赔率表开关
-    const [showSim, setShowSim] = useState(false); // 模拟器开关
+    
+    // [新增] 连抽统计与弹窗状态
+    const [batchStats, setBatchStats] = useState({ totalCost: 0, totalWin: 0 });
+    const [showBatchSummary, setShowBatchSummary] = useState(false);
+
+    const [showPayout, setShowPayout] = useState(false); 
+    const [showSim, setShowSim] = useState(false);
+
     const [soundEnabled, setSoundEnabled] = useState(true);
+    
     const [logic] = useState(() => new QuantumReactorLogic());
+
+    
+
     const deck = logic.fullDeck;
 
     // 音频 Refs
@@ -190,20 +242,72 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
         }
     }, [soundEnabled]);
 
+    // 自动连抽逻辑监控
+    useEffect(() => {
+        // 1. 自动开始
+        if (roundsLeft > 0 && gameState === 'IDLE') {
+            startSingleRound();
+        }
+        
+        // 2. 流程状态机
+        if (roundsLeft > 0 || gameState !== 'IDLE') { // 只要不是完全静止
+            let timer;
+            if (gameState === 'SCRAMBLE' && roundsLeft > 0) {
+                timer = setTimeout(() => setGameState('SYNCING'), 600);
+            } 
+            else if (gameState === 'SYNCING' && roundsLeft > 0) {
+                timer = setTimeout(() => triggerCapture(), 400);
+            } else if (gameState === 'RESULT') {
+                timer = setTimeout(() => {
+                    setRoundsLeft(prev => {
+                        const next = prev - 1;
+                        // 如果归零，显示结算
+                        if (next === 0) {
+                            setShowBatchSummary(true);
+                        }
+                        return next;
+                    });
+                    resetGame();
+                }, 1500);
+            }
+            return () => clearTimeout(timer);
+        }
+    }, [roundsLeft, gameState]);
+
+    // 下注控制：支持 50-1000，支持输入
+    const handleBetInput = (e) => {
+        if (gameState !== 'IDLE' && gameState !== 'RESULT') return;
+        const val = parseInt(e.target.value) || 0;
+        setBet(val);
+    };
+    const handleBetBlur = () => {
+        setBet(prev => Math.min(1000, Math.max(50, prev)));
+    };
     const handleBetChange = (delta) => {
         if (gameState !== 'IDLE' && gameState !== 'RESULT') return;
-        setBet(prev => Math.min(1000, Math.max(100, prev + delta)));
+        setBet(prev => Math.min(1000, Math.max(50, prev + delta)));
     };
 
-    // 阶段 1: 启动反应堆 (进入混乱状态)
-    const initSequence = () => {
-        if (user.balance < bet) { alert("余额不足 / Insufficient Balance"); return; }
+    // 启动 10 连抽 (扣费入口)
+    const startBatch10 = () => {
+        const totalCost = bet * 10;
+        if (user.balance < totalCost) { alert("余额不足 / Insufficient Balance"); return; }
         
-        // 扣款
-        onUpdateBalance(user.balance - bet);
+        // 一次性扣款
+        onUpdateBalance(user.balance - totalCost);
+        
+        // 初始化统计
+        setBatchStats({ totalCost: totalCost, totalWin: 0 });
+        setShowBatchSummary(false);
+
+        // 启动循环
+        setRoundsLeft(10);
+    };
+
+    // 执行单局逻辑 (不扣款，只负责动画状态)
+    const startSingleRound = () => {
         setGameResult(null);
         setDisplayWin(0);
-        
         setGameState('SCRAMBLE');
         if (soundEnabled) audioScramble.current.play().catch(()=>{});
     };
@@ -241,7 +345,12 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
         if (result.isWin) {
             const winAmount = bet * result.multiplier;
             setDisplayWin(winAmount);
-            onUpdateBalance(user.balance - bet + winAmount); // 补回赢分 (简单处理)
+            onUpdateBalance(user.balance + winAmount);
+            
+            // 累加连抽赢分
+            if (roundsLeft > 0) {
+                setBatchStats(prev => ({ ...prev, totalWin: prev.totalWin + winAmount }));
+            }
         }
 
         setGameState('RESULT');
@@ -361,23 +470,40 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
 
                         <div className="flex items-center justify-between gap-4 md:gap-8">
                             {/* Bet Adjust */}
-                            <div className="flex flex-col items-center flex-grow md:flex-grow-0">
-                                <div className="text-cyan-500 text-[10px] font-bold uppercase tracking-widest mb-1">能量投入</div>
-                                <div className="flex items-center bg-black/50 rounded-lg border border-cyan-900 w-full justify-between md:justify-start">
-                                    <button onClick={() => handleBetChange(-10)} disabled={gameState!=='IDLE'&&gameState!=='RESULT'} className="w-12 md:w-10 h-10 hover:bg-cyan-900/50 text-cyan-400 flex items-center justify-center text-xl disabled:opacity-30">-</button>
-                                    <div className="w-16 md:w-20 text-center font-mono text-xl text-white font-bold">{bet}</div>
-                                    <button onClick={() => handleBetChange(10)} disabled={gameState!=='IDLE'&&gameState!=='RESULT'} className="w-12 md:w-10 h-10 hover:bg-cyan-900/50 text-cyan-400 flex items-center justify-center text-xl disabled:opacity-30">+</button>
+                            <div className="flex flex-col items-center shrink-0">
+                                <div className="text-cyan-500 text-[10px] font-bold uppercase tracking-widest mb-1">單局底注</div>
+                                <div className="flex items-center bg-black/50 rounded-lg border border-cyan-900">
+                                    <button onClick={() => handleBetChange(-50)} disabled={gameState!=='IDLE'&&gameState!=='RESULT'} className="w-10 h-10 hover:bg-cyan-900/50 text-cyan-400 flex items-center justify-center text-xl disabled:opacity-30">-</button>
+                                    <input 
+                                        type="number" 
+                                        value={bet} 
+                                        onChange={handleBetInput}
+                                        onBlur={handleBetBlur}
+                                        disabled={gameState!=='IDLE'&&gameState!=='RESULT'}
+                                        className="w-20 bg-transparent text-center font-mono text-xl text-white font-bold outline-none appearance-none"
+                                    />
+                                    <button onClick={() => handleBetChange(50)} disabled={gameState!=='IDLE'&&gameState!=='RESULT'} className="w-10 h-10 hover:bg-cyan-900/50 text-cyan-400 flex items-center justify-center text-xl disabled:opacity-30">+</button>
                                 </div>
                             </div>
+                            
+                            {/* Status Info (Mobile Optimized) */}
+                            {roundsLeft > 0 && (
+                                <div className="flex-grow text-center animate-pulse">
+                                    <div className="text-[10px] text-yellow-500 uppercase tracking-widest">剩餘局數</div>
+                                    <div className="text-2xl font-black text-white font-mono">{roundsLeft}</div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Big Interaction Button */}
                         {(gameState === 'IDLE' || gameState === 'RESULT') ? (
                             <button 
-                                onClick={initSequence}
-                                className="w-full h-16 bg-gradient-to-r from-cyan-600 to-blue-700 text-white font-black text-xl tracking-widest rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.4)] hover:brightness-110 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                onClick={startBatch10}
+                                disabled={roundsLeft > 0} // 防止重复点击
+                                className="w-full h-16 bg-gradient-to-r from-cyan-600 to-blue-700 text-white font-black text-lg md:text-xl tracking-widest rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.4)] hover:brightness-110 transition-all active:scale-95 flex flex-col md:flex-row items-center justify-center gap-1 md:gap-2"
                             >
-                                <Zap fill="white" /> 啟動系統
+                                <div className="flex items-center gap-2"><Zap fill="white" size={20} /> 啟動 10 局</div>
+                                <div className="text-xs md:text-sm font-mono text-cyan-200 bg-black/20 px-2 rounded">總消耗: ${bet * 10}</div>
                             </button>
                         ) : (gameState === 'SCRAMBLE' || gameState === 'SYNCING') ? (
                             <button
@@ -404,6 +530,7 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
 
             {/* 常駐右側賠率表 */}
 {/* 模态框层 */}
+            <BatchSummaryModal isOpen={showBatchSummary} onClose={() => setShowBatchSummary(false)} stats={batchStats} />
             <PayoutModal isOpen={showPayout} onClose={() => setShowPayout(false)} />
             <BallSimulatorModal isOpen={showSim} onClose={() => setShowSim(false)} />
 
