@@ -118,7 +118,7 @@ export default function QuantumReactor({ user, onBack, onUpdateBalance }) {
 
         // 2. 播放捕获/胜利音效
         if (soundEnabled) {
-            const sfx = result.isWin ? audioWin.current : new Audio('./sound/sprint.mp3'); // 输了播放普通音效
+            const sfx = result.isWin ? audioWin.current : new Audio('/sound/sprint.mp3'); // 输了播放普通音效
             sfx.play().catch(()=>{});
         }
 
