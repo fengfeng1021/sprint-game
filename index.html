@@ -951,7 +951,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                 const emptyRate = config.emptySpinProbability || 0.2;
                 if (Math.random() < emptyRate) return []; 
                 // [修復] 讀取設定檔中的 cascadeProbability，如果沒有則預設 0.5
-                let prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.5;
+                let prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.1;
                 while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 1; }
             }
 
@@ -1128,15 +1128,23 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                 
                 let winIds = Object.keys(counts).filter(id => counts[id] >= 8);
                 
-                if (spinSequence.length > 0) {
-                    const targetScriptId = spinSequence[loop - 1];
-                    if (targetScriptId) winIds = winIds.filter(id => Number(id) === Number(targetScriptId));
-                    else winIds = [];
-                } else {
-                    winIds = [];
-                }
+                                    if (spinSequence && spinSequence.length > 0) {
+                        const targetScriptId = spinSequence[loop - 1];
+                        
+                        if (targetScriptId) {
+                            winIds = winIds.filter(id => Number(id) === Number(targetScriptId));
+                        } else {
+                            winIds = []; 
+                        }
+                    } else {
+                        // ★★★【必須補上這裡】★★★
+                        // 無劇本 (空轉局)：強制清空盤面上所有的隨機中獎！
+                        // 這行代碼是阻止無限連消的守門員
+                        winIds = [];
+                    }
 
-                if (winIds.length === 0) { active = false; break; }
+                    if (winIds.length === 0) { active = false; break; }
+
 
                 let batchWin = 0;
                 const eliminatedSet = new Set();
@@ -1377,7 +1385,7 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, increment
                                     totalSpinWin += fgResult.win;
                                     fgAccMult = fgResult.newAccMult;
                                     
-                                    if (fgResult.scatters >= 3) spins += 5; // Retrigger
+                                    if (fgResult.scatters >= 3) spins += 3; // Retrigger
                                     
                                     if (fgResult.smashCount > 0) tempStats.smashCount += fgResult.smashCount;
                                     fgResult.multsFound.forEach(m => { tempStats.multCounts[m] = (tempStats.multCounts[m] || 0) + 1; });
@@ -2135,10 +2143,17 @@ const smartWait = (ms, isFastMode = false) => {
                         while (Math.random() < prob && totalCascades < 20) { totalCascades++; }
                     }
                 } else {
-                    const emptyRate = config.emptySpinProbability || 0.2;
-                    if (Math.random() < emptyRate) return []; 
-                    let prob = 0.5; while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 1; }
-                }
+                const emptyRate = config.emptySpinProbability || 0.2;
+                if (Math.random() < emptyRate) return []; 
+                
+                // [修復] 將預設值改為 0.1 (10%)，防止配置讀取失敗時機率過高
+                let prob = config.cascadeProbability !== undefined ? config.cascadeProbability : 0.1;
+                
+                // [日誌] 如果您是管理員，可以在這裡偷偷 console.log 一下 prob 確認
+                // console.log("Current Cascade Prob:", prob);
+
+                while (Math.random() < prob && totalCascades < 5) { totalCascades++; prob *= 1; }
+            }
 
                 // B. 分配每一輪的中獎符號
                 for (let i = 0; i <= totalCascades; i++) {
@@ -2283,6 +2298,13 @@ const smartWait = (ms, isFastMode = false) => {
                     playSound('spin'); await new Promise(r => setTimeout(r, 50 / gameSpeed));
 
                     const activeCfg = configRef.current;
+// ★★★ [新增] 偵測並顯示當前連消機率 ★★★
+                    if (user.role === 'admin') {
+                        const currentProb = activeCfg.cascadeProbability !== undefined ? activeCfg.cascadeProbability : 0.1;
+                        // 只在連消機率異常高 (> 20%) 時發出警告，或每次都顯示
+                        if (currentProb > 0.2) addLog(`⚠️ 警告：連消機率過高 ${(currentProb*100).toFixed(0)}%`, 'error');
+                        else addLog(`ℹ️ 當前連消設定: ${(currentProb*100).toFixed(0)}%`, 'gray');
+                    }
                     let spinSequence = []; // [ID1, ID2, ID3]
                     let gridToDisplay;
 
@@ -2314,11 +2336,16 @@ const smartWait = (ms, isFastMode = false) => {
                     setGrid(gridToDisplay);
                     syncTableGrid(gridToDisplay, []);
 
-                    // 2. 初始砸球 (全剧本保护)
-                    // 保护列表 = 整个剧本里涉及的所有 ID
+                    // 2. 初始砸球 (全剧本保护 + 假象诱惑)
                     const protectedIds = new Set(spinSequence); 
-                    const smashRate = activeCfg.smashProbability !== undefined ? activeCfg.smashProbability : 0.3;
                     
+                    // [新增] 判断是否为空转局 (制造假象的时机)
+                    const isFakeTease = spinSequence.length === 0;
+
+                    // [设定] 如果是假象局，砸球机率设为 50%，否则读取设定档
+                    let smashRate = activeCfg.smashProbability !== undefined ? activeCfg.smashProbability : 0.3;
+                    if (isFakeTease) smashRate = 0.5;
+
                     const candidates = [];
                     gridToDisplay.forEach((row, r) => { 
                         row.forEach((cell, c) => { 
@@ -2329,8 +2356,17 @@ const smartWait = (ms, isFastMode = false) => {
                     });
 
                     if (Math.random() < smashRate && candidates.length > 0) {
-                        // [修改] 初始砸球也支持 1-6 颗
-                        let smashCount = getSmashCount(activeCfg);
+                        let smashCount = 1;
+
+                        // [逻辑分支] 假象 vs 真实
+                        if (isFakeTease) {
+                            // ★ 假象模式：数量 1-6 颗平均分配 (Uniform)
+                            smashCount = Math.floor(Math.random() * 6) + 1;
+                        } else {
+                            // ★ 真实模式：依照权重表
+                            smashCount = getSmashCount(activeCfg);
+                        }
+                        
                         smashCount = Math.min(smashCount, candidates.length);
                         
                         const targetCoords = [];
@@ -2353,9 +2389,22 @@ const smartWait = (ms, isFastMode = false) => {
                         }, delayStrike);
                         
                         const smashedGrid = gridToDisplay.map(row => row.map(cell => ({ ...cell })));
+                        
+                        // [假象倍数池] 平均分配的高倍数诱饵 (2x 到 500x)
+                        const fakePool = [2, 5, 10, 25, 50, 100, 500];
+
                         targetCoords.forEach(t => { 
-                            // [修改] 使用新的分层级倍数生成
-                            const selectedVal = getRandomMultiplierSmart(activeCfg);
+                            let selectedVal;
+                            
+                            if (isFakeTease) {
+                                // ★ 假象模式：倍数平均分配 (从池中随机抽，不看权重)
+                                // 这样 500x 和 2x 的出现机率一样，极大增加诱惑力
+                                selectedVal = fakePool[Math.floor(Math.random() * fakePool.length)];
+                            } else {
+                                // ★ 真实模式：依照权重表
+                                selectedVal = getRandomMultiplierSmart(activeCfg);
+                            }
+
                             smashedGrid[t.r][t.c] = { 
                                 ...smashedGrid[t.r][t.c], 
                                 id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier', 
@@ -2466,20 +2515,23 @@ const smartWait = (ms, isFastMode = false) => {
                     // [修改] 嚴格劇本控制：只允許消除當前劇本步驟指定的 ID
                     let winIds = Object.keys(finalCounts).filter(id => finalCounts[id] >= 8);
 
-                    if (spinSequence && spinSequence.length > 0) {
-                        // 根據當前輪數 (loop 從 1 開始) 獲取劇本指定的目標 ID
+                                        if (spinSequence && spinSequence.length > 0) {
                         const targetScriptId = spinSequence[loop - 1];
                         
                         if (targetScriptId) {
-                            // 過濾掉所有非目標的意外消除 (例如目標是7，若出現3則強制忽略)
                             winIds = winIds.filter(id => Number(id) === Number(targetScriptId));
                         } else {
-                            // 如果劇本已經跑完 (沒有下一個目標)，強制停止任何額外消除
                             winIds = []; 
                         }
+                    } else {
+                        // ★★★【必須補上這裡】★★★
+                        // 無劇本 (空轉局)：強制清空盤面上所有的隨機中獎！
+                        // 這行代碼是阻止無限連消的守門員
+                        winIds = [];
                     }
 
                     if (winIds.length === 0) { keepPlaying = false; break; }
+
 
                     const currentEliminatingSet = new Set(); const currentRoundTexts = []; let batchWin = 0; let totalR = 0; let totalC = 0; let totalEliminatedCount = 0;
                     winIds.forEach(targetId => {
@@ -2623,7 +2675,7 @@ const smartWait = (ms, isFastMode = false) => {
                 if (currentCost > 0 || finalWin > 0) { saveGameStats(currentCost, finalWin, finalMult, triggerFG, isFGWin); }
 
                 if (triggerFG) { addLog("✨ 触发 Free Game", 'gold'); setShowFGTrigger(true); playSound('bigwin'); await smartWait(3000, false); setShowFGTrigger(false); setFreeGame({ active: true, spinsLeft: 15, accMult: 0, totalWin: 0 }); } 
-                else if (triggerRetrigger) { addLog("🔄 Retrigger +5 Spins", 'gold'); setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft + 5 })); playSound('bigwin'); await smartWait(1000, false); }
+                else if (triggerRetrigger) { addLog("🔄 Retrigger +3 Spins", 'gold'); setFreeGame(prev => ({ ...prev, spinsLeft: prev.spinsLeft + 3 })); playSound('bigwin'); await smartWait(1000, false); }
 
                 setIsSpinning(false);
             };
