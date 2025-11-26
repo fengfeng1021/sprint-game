@@ -2416,7 +2416,7 @@ const smartWait = (ms, isFastMode = false) => {
                         setTimeout(() => { setGrid(smashedGrid); }, delayReveal);
                         setTimeout(() => { setLightningStrikes(new Set()); setIsManCasting(false); setIsWomanCasting(false); }, delayClear);
                         smashHappened = true;
-                    }
+                    }}
 
                     const baseWait = 800; const totalWait = smashHappened ? Math.max(baseWait, 1100) : baseWait;
                     await new Promise(r => setTimeout(r, totalWait / gameSpeed));
