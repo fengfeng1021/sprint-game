@@ -33,22 +33,22 @@ const spawnCoins = (amount = 20) => {
         // [修改] 符號定義：添加 scale 屬性來控制個別圖片大小
         const SYMBOLS_DEF = [
             // ID 99: Scatter (本身已有特殊渲染，這裡的 scale 影響不大，但可以加)
-            { id: 99, type: 'scatter', icon: '/images/10.png', name: 'Scatter', scale: 1 },
+            { id: 99, type: 'scatter', icon: './images/10.png', name: 'Scatter', scale: 1 },
 
             // ID 88: 倍數球 (特殊渲染，忽略 scale)
             { id: 88, type: 'mult', icon: '💎', color: 'text-green-400', name: 'Multiplier' },
 
             // 普通符號範例：
             // 讓高賠率的符號稍微大一點，低賠率的小一點
-            { id: 9, type: 'normal', icon: '/images/9.png', payout: { 12: 50, 10: 25, 8: 10 }, name: 'Eye', scale: 1 },
-            { id: 8, type: 'normal', icon: '/images/8.png', payout: { 12: 25, 10: 10, 8: 2.5 }, name: 'Snake', scale: 1 },
-            { id: 7, type: 'normal', icon: '/images/7.png', payout: { 12: 15, 10: 5, 8: 2 }, name: 'Bow', scale: 1 },
-            { id: 6, type: 'normal', icon: '/images/6.png', payout: { 12: 12, 10: 2, 8: 1.5 }, name: 'Blade', scale: 1 }, // 默認 1.0
-            { id: 5, type: 'normal', icon: '/images/5.png', payout: { 12: 10, 10: 1.5, 8: 1 }, name: 'Gold', scale: 0.7 },
-            { id: 4, type: 'normal', icon: '/images/4.png', payout: { 12: 8, 10: 1.2, 8: 0.8 }, name: 'Red', scale: 0.7 }, // 稍小
-            { id: 3, type: 'normal', icon: '/images/3.png', payout: { 12: 5, 10: 1, 8: 0.5 }, name: 'Purple', scale: 0.7 },
-            { id: 2, type: 'normal', icon: '/images/2.png', payout: { 12: 4, 10: 0.9, 8: 0.4 }, name: 'Blue', scale: 0.7 },
-            { id: 1, type: 'normal', icon: '/images/1.png', payout: { 12: 2, 10: 0.75, 8: 0.25 }, name: 'Green', scale: 0.7 }, // 縮小
+            { id: 9, type: 'normal', icon: './images/9.png', payout: { 12: 50, 10: 25, 8: 10 }, name: 'Eye', scale: 1 },
+            { id: 8, type: 'normal', icon: './images/8.png', payout: { 12: 25, 10: 10, 8: 2.5 }, name: 'Snake', scale: 1 },
+            { id: 7, type: 'normal', icon: './images/7.png', payout: { 12: 15, 10: 5, 8: 2 }, name: 'Bow', scale: 1 },
+            { id: 6, type: 'normal', icon: './images/6.png', payout: { 12: 12, 10: 2, 8: 1.5 }, name: 'Blade', scale: 1 }, // 默認 1.0
+            { id: 5, type: 'normal', icon: './images/5.png', payout: { 12: 10, 10: 1.5, 8: 1 }, name: 'Gold', scale: 0.7 },
+            { id: 4, type: 'normal', icon: './images/4.png', payout: { 12: 8, 10: 1.2, 8: 0.8 }, name: 'Red', scale: 0.7 }, // 稍小
+            { id: 3, type: 'normal', icon: './images/3.png', payout: { 12: 5, 10: 1, 8: 0.5 }, name: 'Purple', scale: 0.7 },
+            { id: 2, type: 'normal', icon: './images/2.png', payout: { 12: 4, 10: 0.9, 8: 0.4 }, name: 'Blue', scale: 0.7 },
+            { id: 1, type: 'normal', icon: './images/1.png', payout: { 12: 2, 10: 0.75, 8: 0.25 }, name: 'Green', scale: 0.7 }, // 縮小
         ];
 
         // [修改] 將權重預設值改為百分比格式 (總和建議為 100)
@@ -1037,12 +1037,12 @@ while (Math.random() < prob && totalCascades < 20) { totalCascades++; prob *= 0.
                     )}
 
                     {cell.id === 88 ? (() => {
-                        let orbImageStr = '/images/small.png'; const val = cell.val;
+                        let orbImageStr = './images/small.png'; const val = cell.val;
                         // [修改] 更新图片映射范围以适应大倍数
-                        if (val <= 5) orbImageStr = '/images/small.png';       // 1-5倍: 绿球
-                        else if (val <= 10) orbImageStr = '/images/small2.png'; // 6-10倍: 蓝球
-                        else if (val <= 50) orbImageStr = '/images/small3.png'; // 15-50倍: 紫球
-                        else orbImageStr = '/images/small4.png';                // 60-500倍: 红球/金球
+                        if (val <= 5) orbImageStr = './images/small.png';       // 1-5倍: 绿球
+                        else if (val <= 10) orbImageStr = './images/small2.png'; // 6-10倍: 蓝球
+                        else if (val <= 50) orbImageStr = './images/small3.png'; // 15-50倍: 紫球
+                        else orbImageStr = './images/small4.png';                // 60-500倍: 红球/金球
                         return (
                             <div className="relative w-full h-full flex items-center justify-center p-1 group">
                                 <img src={orbImageStr} alt={`${val}x`} className="w-full h-full object-contain drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-transform duration-200 group-hover:scale-105" />
@@ -1401,7 +1401,7 @@ const [bgmVolume, setBgmVolume] = useState(0.4); // 音乐音量
 
             // [Audio Pool] 初始化音频池 (每种音效预加载 5 个实例，无需运行时创建，零开销)
             useEffect(() => {
-const soundFiles = { 'spin': '/sound/sprint.mp3', 'win': '/sound/clear.mp3', 'man': '/sound/man.mp3', 'woman': '/sound/woman.mp3', 'drop': '/sound/sprint.mp3', 'bigwin': '/sound/clear.mp3', 'click': '/sound/sprint.mp3' }; 
+const soundFiles = { 'spin': './sound/sprint.mp3', 'win': './sound/clear.mp3', 'man': './sound/man.mp3', 'woman': './sound/woman.mp3', 'drop': './sound/sprint.mp3', 'bigwin': './sound/clear.mp3', 'click': './sound/sprint.mp3' }; 
 
 Object.entries(soundFiles).forEach(([key, src]) => {
                     audioPool.current[key] = [];
@@ -2219,8 +2219,8 @@ const smartWait = (ms, isFastMode = false) => {
                         <div className="bg-breathing-light"></div>
 
                        {/* [优化] 手机端人物向中间靠拢 (10%) */}
-                        <img src="/images/man.png" alt="Character Left" className={`hidden landscape:block absolute left-[10%] lg:left-[2%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isManCasting ? 'animate-character-cast' : ''}`} />
-                        <img src="/images/woman.png" alt="Character Right" className={`hidden landscape:block absolute right-[10%] lg:right-[4%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isWomanCasting ? 'animate-character-cast' : ''}`} style={{ transform: 'translateY(-50%)' }} />                        {/* FG Info */}
+                        <img src="./images/man.png" alt="Character Left" className={`hidden landscape:block absolute left-[10%] lg:left-[2%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isManCasting ? 'animate-character-cast' : ''}`} />
+                        <img src="./images/woman.png" alt="Character Right" className={`hidden landscape:block absolute right-[10%] lg:right-[4%] top-1/2 -translate-y-1/2 h-[80%] lg:h-[90%] max-h-[900px] w-auto object-contain z-0 lg:z-10 opacity-40 lg:opacity-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] pointer-events-none transition-transform duration-500 ${isWomanCasting ? 'animate-character-cast' : ''}`} style={{ transform: 'translateY(-50%)' }} />                        {/* FG Info */}
                         {/* FG Info (Responsive Fix) */}
                         {freeGame.active && (
                             <div className="absolute z-40 animate-bounce-drop pointer-events-none
@@ -2391,7 +2391,7 @@ const smartWait = (ms, isFastMode = false) => {
                     <style>{`@keyframes laserShoot { 0% { stroke-dasharray: 0, 1000; stroke-dashoffset: 0; opacity: 0.8; } 50% { opacity: 1; stroke-width: 8; } 100% { stroke-dasharray: 1000, 0; stroke-dashoffset: 0; opacity: 0; stroke-width: 2; } } .animate-laser-shot { animation: laserShoot 0.6s ease-out forwards; }`}</style>
 
                     {/* Background Music */}
-                    <audio ref={bgmRef} loop src="/sound/bgm.MP3" />
+                    <audio ref={bgmRef} loop src="./sound/bgm.MP3" />
 
                 </div>
             );
